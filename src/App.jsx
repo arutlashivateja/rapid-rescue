@@ -1,24 +1,50 @@
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
 // Import your pages
 import SignIn from './pages/SignIn';
 import Dashboard from './pages/Dashboard';
-import ControlRoom from './pages/ControlRoom'; // <--- 1. IMPORTED CONTROL ROOM
+import ControlRoom from './pages/ControlRoom';
 
-// --- SECURITY GATE ---
+// --- 1. SECURITY GATE (For Drivers) ---
 const PrivateRoute = ({ children }) => {
   const { user, loading } = useAuth();
   
   if (loading) {
     return (
-      <div className="h-screen bg-black text-tesla-red flex items-center justify-center font-bold tracking-widest animate-pulse">
-        INITIALIZING SECURE LINK...
+      <div className="h-screen bg-black text-red-600 flex items-center justify-center font-bold tracking-widest animate-pulse">
+        INITIALIZING SYSTEM...
       </div>
     );
   }
   
   return user ? children : <Navigate to="/login" />;
+};
+
+// --- 2. ADMIN GATE (New Security Check) ---
+const AdminRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+
+  // A. Wait for Firebase to finish loading
+  if (loading) {
+    return (
+      <div className="h-screen bg-black text-red-600 flex items-center justify-center font-bold tracking-widest animate-pulse">
+        VERIFYING CLEARANCE...
+      </div>
+    );
+  }
+
+  // B. Check if User exists AND has 'admin' role
+  // Note: We check user.role (from database) or user.customClaims if you used that.
+  // Assuming your AuthContext merges DB data into 'user'.
+  if (!user || user.role !== 'admin') {
+    console.warn("Access Denied: User is not Admin");
+    return <Navigate to="/" />; // Kick them back to dashboard if not admin
+  }
+
+  // C. Access Granted
+  return children;
 };
 
 export default function App() {
@@ -36,9 +62,12 @@ export default function App() {
             </PrivateRoute>
           } />
 
-          {/* 2. ADMIN ROUTE: THE CONTROL ROOM */}
-          {/* You can access this by typing /admin at the end of your URL */}
-          <Route path="/admin" element={<ControlRoom />} />
+          {/* Protected Admin Route: Control Room */}
+          <Route path="/admin" element={
+            <AdminRoute>
+              <ControlRoom />
+            </AdminRoute>
+          } />
 
         </Routes>
       </Router>
