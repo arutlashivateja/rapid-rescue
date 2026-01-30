@@ -22,11 +22,11 @@ const PrivateRoute = ({ children }) => {
   return user ? children : <Navigate to="/login" />;
 };
 
-// --- 2. ADMIN GATE (New Security Check) ---
+// --- 2. ADMIN GATE (FIXED: Checks 'profile' instead of 'user') ---
 const AdminRoute = ({ children }) => {
-  const { user, loading } = useAuth();
+  const { user, profile, loading } = useAuth(); // <--- Get 'profile' too
 
-  // A. Wait for Firebase to finish loading
+  // A. Wait for loading
   if (loading) {
     return (
       <div className="h-screen bg-black text-red-600 flex items-center justify-center font-bold tracking-widest animate-pulse">
@@ -35,12 +35,12 @@ const AdminRoute = ({ children }) => {
     );
   }
 
-  // B. Check if User exists AND has 'admin' role
-  // Note: We check user.role (from database) or user.customClaims if you used that.
-  // Assuming your AuthContext merges DB data into 'user'.
-  if (!user || user.role !== 'admin') {
-    console.warn("Access Denied: User is not Admin");
-    return <Navigate to="/" />; // Kick them back to dashboard if not admin
+  // B. Security Check
+  // 1. Must be logged in (user)
+  // 2. Must have a profile (profile)
+  // 3. Role must be 'admin'
+  if (!user || !profile || profile.role !== 'admin') {
+    return <Navigate to="/" />; // Access Denied -> Send to Dashboard
   }
 
   // C. Access Granted
@@ -52,17 +52,17 @@ export default function App() {
     <AuthProvider>
       <Router>
         <Routes>
-          {/* Public Route: Login/Signup */}
+          {/* Public Route */}
           <Route path="/login" element={<SignIn />} />
           
-          {/* Protected Route: Driver Cockpit (Home Page) */}
+          {/* Protected Driver Route */}
           <Route path="/" element={
             <PrivateRoute>
               <Dashboard />
             </PrivateRoute>
           } />
 
-          {/* Protected Admin Route: Control Room */}
+          {/* Protected Admin Route */}
           <Route path="/admin" element={
             <AdminRoute>
               <ControlRoom />
@@ -70,7 +70,7 @@ export default function App() {
           } />
 
         </Routes>
-      </Router>                      // Force update v1
+      </Router>
     </AuthProvider>
   );
 }
