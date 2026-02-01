@@ -17,16 +17,19 @@ export default function Dashboard() {
   const [status, setStatus] = useState("offline");
   const [mission, setMission] = useState(null); 
 
-  // --- 1. FIREBASE LISTENER ---
+  // --- 1. FIREBASE REAL-TIME LISTENER ---
   useEffect(() => {
     if (!user) return;
     const driverRef = doc(db, "drivers", user.uid);
+    
+    // Listen for changes to the driver's document
     const unsubscribe = onSnapshot(driverRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setStatus(data.status || "offline");
         
-        // Check for active mission
+        // CHECK: Is there an active mission?
+        // If data.currentMission exists and status is 'accepted' or 'pending', show the Call Screen
         if (data.currentMission && (data.currentMission.status === 'accepted' || data.currentMission.status === 'pending')) {
           setMission(data.currentMission);
         } else {
@@ -37,7 +40,9 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, [user]);
 
-  // --- 2. ACTIONS ---
+  // --- 2. ACTION HANDLERS ---
+  
+  // Toggle between Online (Active) and Offline (Standby)
   const toggleStatus = async () => {
     const newStatus = status === "offline" ? "online" : "offline";
     try {
@@ -47,26 +52,30 @@ export default function Dashboard() {
     }
   };
 
+  // Mark the rescue as "Done" and return to dashboard
   const completeMission = async () => {
-    if(!window.confirm("Complete this mission?")) return;
+    if(!window.confirm("Confirm rescue completion?")) return;
     try {
       await updateDoc(doc(db, "drivers", user.uid), { 
-        status: "online", 
-        currentMission: null 
+        status: "online",       // Auto-set back to online
+        currentMission: null    // Clear the mission
       });
     } catch (e) {
       console.error("Error completing mission", e);
     }
   };
 
+  // Primary Action: Open Google Maps
   const navigateToLocation = () => {
     if (mission?.lat && mission?.lng) {
+      // Open Google Maps navigation
       window.open(`https://www.google.com/maps/dir/?api=1&destination=${mission.lat},${mission.lng}`, '_blank');
     } else {
       alert("Location coordinates missing");
     }
   };
 
+  // Secondary Action: Call the user
   const callUser = () => {
     if (mission?.phoneNumber) {
       window.open(`tel:${mission.phoneNumber}`);
@@ -75,13 +84,14 @@ export default function Dashboard() {
     }
   };
 
-  // --- 3. UI RENDER ---
+  // --- 3. UI RENDERING ---
   return (
-    <div className="h-screen bg-[#050505] text-white font-sans flex flex-col overflow-hidden">
+    <div className="h-screen bg-[#050505] text-white font-sans flex flex-col overflow-hidden selection:bg-red-500 selection:text-white">
       
-      {/* --- HEADER (Common to both) --- */}
-      <header className="flex justify-between items-center px-6 py-4 z-10">
-        <div className="flex items-center gap-2 select-none">
+      {/* --- HEADER --- */}
+      {/* Contains Logo and Logout Button */}
+      <header className="flex justify-between items-center px-6 py-4 z-10 select-none">
+        <div className="flex items-center gap-2">
           <FaAmbulance className="text-red-600 text-2xl" />
           <h1 className="text-xl font-black tracking-tighter">
             RAPID<span className="text-red-600">RESCUE</span>
@@ -95,23 +105,26 @@ export default function Dashboard() {
         </button>
       </header>
 
-      {/* --- MAIN CONTENT --- */}
+      {/* --- MAIN CONTENT AREA --- */}
       <main className="flex-1 flex flex-col items-center justify-center p-6 w-full max-w-lg mx-auto relative">
         
-        {/* === PAGE 1: ACTIVE MISSION === */}
+        {/* ============================================================
+            STATE 1: MISSION INTERFACE (ACTIVE CALL SCREEN)
+           ============================================================ */}
         {mission ? (
           <div className="w-full flex flex-col gap-6 animate-in fade-in duration-300">
             
-            {/* Dark Card */}
-            <div className="bg-[#121212] border border-gray-800 rounded-3xl p-8 pb-10 text-center relative shadow-2xl">
-              {/* Red Top Glow */}
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-1 bg-red-600 shadow-[0_0_20px_rgba(220,38,38,0.6)]"></div>
+            {/* EMERGENCY CARD */}
+            <div className="bg-[#121212] border border-gray-800 rounded-3xl p-8 pb-10 text-center relative shadow-2xl overflow-hidden">
+              {/* Red Glow Effect */}
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-1 bg-red-600 shadow-[0_0_30px_rgba(220,38,38,0.8)]"></div>
               
-              {/* Icon Circle */}
+              {/* Center Icon */}
               <div className="mx-auto w-24 h-24 bg-[#1a1a1a] rounded-full flex items-center justify-center mb-6 shadow-inner ring-1 ring-gray-800">
                 <FaLocationArrow className="text-blue-500 text-3xl transform -rotate-45" />
               </div>
 
+              {/* Title & Location */}
               <h2 className="text-2xl font-bold mb-2">Emergency Patient</h2>
               <p className="text-gray-400 text-sm mb-6 font-medium">
                 {mission.location || "Location unavailable"}
@@ -120,20 +133,21 @@ export default function Dashboard() {
               {/* Live Badge */}
               <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-bold uppercase tracking-widest">
                 <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
-                Live Mission
+                LIVE MISSION
               </div>
             </div>
 
-            {/* Blue Navigate Button */}
+            {/* PRIMARY ACTION: NAVIGATE (Blue Button) */}
             <button 
               onClick={navigateToLocation}
               className="w-full bg-[#3b82f6] hover:bg-[#2563eb] active:scale-95 transition-all text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-900/20 flex items-center justify-center gap-2 text-lg uppercase tracking-wider"
             >
-              <FaLocationArrow className="transform -rotate-45" /> Navigate
+              <FaLocationArrow className="transform -rotate-45" /> NAVIGATE
             </button>
 
-            {/* Split Action Buttons */}
+            {/* SECONDARY ACTIONS: CALL & DONE */}
             <div className="grid grid-cols-2 gap-4">
+              {/* Call Button */}
               <button 
                 onClick={callUser}
                 className="bg-[#1f2937] hover:bg-[#374151] active:scale-95 transition-all text-gray-200 font-bold py-4 rounded-xl flex items-center justify-center gap-2 border border-gray-700"
@@ -141,9 +155,10 @@ export default function Dashboard() {
                 <FaPhoneAlt size={16} /> Call
               </button>
 
+              {/* Done Button (Green Outline) */}
               <button 
                 onClick={completeMission}
-                className="bg-transparent hover:bg-green-900/20 active:scale-95 transition-all text-green-500 font-bold py-4 rounded-xl flex items-center justify-center gap-2 border border-green-600"
+                className="bg-transparent hover:bg-green-900/10 active:scale-95 transition-all text-green-500 font-bold py-4 rounded-xl flex items-center justify-center gap-2 border border-green-600"
               >
                 <FaCheck size={16} /> Done
               </button>
@@ -151,32 +166,37 @@ export default function Dashboard() {
           </div>
         ) : (
           
-          /* === PAGE 2: DASHBOARD (STANDBY) === */
+          /* ============================================================
+             STATE 2: DRIVER DASHBOARD (STATUS SCREEN)
+             ============================================================ */
           <div className="w-full h-full flex flex-col justify-between py-8">
             
-            {/* Center Status Icon */}
+            {/* CENTRAL STATUS DISPLAY */}
             <div className="flex-1 flex flex-col items-center justify-center">
+              {/* Icon Circle */}
               <div className={`w-48 h-48 rounded-full border-2 flex items-center justify-center mb-8 relative transition-all duration-500
-                ${status === 'online' ? 'border-green-500 shadow-[0_0_30px_rgba(34,197,94,0.2)]' : 'border-gray-700'}`}>
+                ${status === 'online' ? 'border-green-500 shadow-[0_0_40px_rgba(34,197,94,0.15)]' : 'border-gray-700'}`}>
                  
                  <FaLocationArrow className={`text-5xl transform -rotate-45 transition-colors duration-500 
                    ${status === 'online' ? 'text-green-500' : 'text-gray-600'}`} />
               </div>
               
-              <h2 className="text-gray-500 font-bold tracking-[0.2em] text-xs uppercase animate-pulse">
-                {status === 'online' ? 'Scanning for calls...' : 'Systems Standby'}
+              {/* Status Text */}
+              <h2 className={`font-bold tracking-[0.2em] text-xs uppercase animate-pulse
+                ${status === 'online' ? 'text-green-500' : 'text-gray-500'}`}>
+                {status === 'online' ? 'SCANNING FOR CALLS...' : 'SYSTEMS STANDBY'}
               </h2>
             </div>
 
-            {/* Bottom Controls */}
+            {/* BOTTOM CONTROLS */}
             <div className="space-y-4">
               
-              {/* Toggle Button */}
+              {/* ONLINE/OFFLINE TOGGLE BUTTON */}
               <button 
                 onClick={toggleStatus}
                 className={`w-full py-5 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-all duration-300 shadow-lg
                   ${status === 'online' 
-                    ? 'bg-green-600 text-white hover:bg-green-500' 
+                    ? 'bg-green-600 text-white hover:bg-green-500 shadow-green-900/20' 
                     : 'bg-[#1f2937] text-gray-400 hover:bg-[#374151]'
                   }`}
               >
@@ -184,19 +204,21 @@ export default function Dashboard() {
                 {status === 'online' ? 'ONLINE' : 'OFFLINE'}
               </button>
 
-              {/* Stats Grid */}
+              {/* STATS PANEL (RESCUES & VEHICLE) */}
               <div className="grid grid-cols-2 gap-4">
+                {/* Rescues Metric */}
                 <div className="bg-[#111] border border-gray-800 p-4 rounded-xl flex flex-col justify-between h-20">
                   <div className="flex justify-between items-center">
-                    <span className="text-[10px] font-bold text-gray-500 uppercase">Rescues</span>
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">RESCUES</span>
                     <FaHeartbeat className="text-red-600" />
                   </div>
                   <span className="text-xl font-bold text-white">1</span>
                 </div>
 
+                {/* Vehicle Metric */}
                 <div className="bg-[#111] border border-gray-800 p-4 rounded-xl flex flex-col justify-between h-20">
                    <div className="flex justify-between items-center">
-                    <span className="text-[10px] font-bold text-gray-500 uppercase">Vehicle</span>
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">VEHICLE</span>
                     <FaAmbulance className="text-blue-500" />
                   </div>
                   <span className="text-sm font-bold text-white">Pending</span>
