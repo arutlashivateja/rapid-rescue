@@ -75,24 +75,26 @@ export default function ControlRoom() {
       </div>
 
       {/* DRIVER TABLE */}
-      <div className="bg-gray-900 rounded-lg overflow-hidden border border-gray-800 shadow-2xl">
-        <table className="w-full text-left">
+      {/* 1. Added 'overflow-x-auto' here so you can scroll sideways on phone */}
+      <div className="bg-gray-900 rounded-lg border border-gray-800 shadow-2xl overflow-x-auto"> 
+        
+        {/* 2. Added 'min-w-[600px]' to force the table to stay wide enough to read */}
+        <table className="w-full text-left min-w-[600px]"> 
           <thead className="bg-gray-800 text-gray-400 font-mono text-sm uppercase tracking-wider">
             <tr>
               <th className="p-4">Pilot Name</th>
               <th className="p-4">Vehicle ID</th>
               <th className="p-4">Status</th>
-              <th className="p-4 text-center">Action</th> {/* NEW COLUMN */}
+              <th className="p-4 text-center">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-800">
             {drivers.map((driver) => (
               <tr key={driver.id} className="hover:bg-gray-800/50 transition duration-150">
-                <td className="p-4 font-bold">{driver.name || "Unknown Pilot"}</td>
-                <td className="p-4 font-mono text-gray-400">{driver.vehicleNumber || "N/A"}</td>
+                <td className="p-4 font-bold whitespace-nowrap">{driver.name || "Unknown Pilot"}</td>
+                <td className="p-4 font-mono text-gray-400 whitespace-nowrap">{driver.vehicleNumber || "N/A"}</td>
                 
-                {/* Status Badge */}
-                <td className="p-4">
+                <td className="p-4 whitespace-nowrap">
                   <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide
                     ${driver.status === 'online' ? 'bg-green-900 text-green-300 border border-green-700' : ''}
                     ${driver.status === 'busy' ? 'bg-yellow-900 text-yellow-300 border border-yellow-700' : ''}
@@ -102,12 +104,11 @@ export default function ControlRoom() {
                   </span>
                 </td>
 
-                {/* NEW: DISPATCH BUTTON */}
-                <td className="p-4 text-center">
+                <td className="p-4 text-center whitespace-nowrap">
                   {driver.status === 'online' ? (
                     <button 
                       onClick={() => handleDispatch(driver.id, driver.name)}
-                      className="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-4 rounded shadow-[0_0_10px_rgba(220,38,38,0.5)] transition-all transform hover:scale-105"
+                      className="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-4 rounded shadow-[0_0_10px_rgba(220,38,38,0.5)] active:scale-95 transition-transform"
                     >
                       DISPATCH
                     </button>
@@ -122,6 +123,3 @@ export default function ControlRoom() {
           </tbody>
         </table>
       </div>
-    </div>
-  );
-}
