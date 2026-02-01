@@ -1,234 +1,207 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { db } from '../services/firebase';
-import { doc, updateDoc, onSnapshot } from 'firebase/firestore';
-import { 
-  FaPowerOff, 
-  FaLocationArrow, 
-  FaPhoneAlt, 
-  FaCheck, 
-  FaSignOutAlt, 
-  FaHeartbeat, 
-  FaAmbulance 
-} from 'react-icons/fa';
+import { useState, useEffect } from "react";
 
-export default function Dashboard() {
-  const { user, logout } = useAuth();
-  const [status, setStatus] = useState("offline");
-  const [mission, setMission] = useState(null); 
+export default function DriverDashboard() {
+  const [online, setOnline] = useState(false);
+  const [mission, setMission] = useState(null);
+  const [rescues, setRescues] = useState(1);
 
-  // --- 1. FIREBASE REAL-TIME LISTENER ---
+  // Simulate incoming emergency call
   useEffect(() => {
-    if (!user) return;
-    const driverRef = doc(db, "drivers", user.uid);
-    
-    // Listen for changes to the driver's document
-    const unsubscribe = onSnapshot(driverRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setStatus(data.status || "offline");
-        
-        // CHECK: Is there an active mission?
-        // If data.currentMission exists and status is 'accepted' or 'pending', show the Call Screen
-        if (data.currentMission && (data.currentMission.status === 'accepted' || data.currentMission.status === 'pending')) {
-          setMission(data.currentMission);
-        } else {
-          setMission(null);
-        }
-      }
-    });
-    return () => unsubscribe();
-  }, [user]);
+    if (online && !mission) {
+      const timer = setTimeout(() => {
+        setMission({
+          patient: "Emergency Patient",
+          location: "Location unavailable",
+        });
+      }, 4000); // simulate call after 4 sec
 
-  // --- 2. ACTION HANDLERS ---
-  
-  // Toggle between Online (Active) and Offline (Standby)
-  const toggleStatus = async () => {
-    const newStatus = status === "offline" ? "online" : "offline";
-    try {
-      await updateDoc(doc(db, "drivers", user.uid), { status: newStatus });
-    } catch (e) {
-      console.error("Error toggling status", e);
+      return () => clearTimeout(timer);
     }
+  }, [online, mission]);
+
+  const finishMission = () => {
+    setMission(null);
+    setRescues((r) => r + 1);
   };
 
-  // Mark the rescue as "Done" and return to dashboard
-  const completeMission = async () => {
-    if(!window.confirm("Confirm rescue completion?")) return;
-    try {
-      await updateDoc(doc(db, "drivers", user.uid), { 
-        status: "online",       // Auto-set back to online
-        currentMission: null    // Clear the mission
-      });
-    } catch (e) {
-      console.error("Error completing mission", e);
-    }
-  };
-
-  // Primary Action: Open Google Maps
-  const navigateToLocation = () => {
-    if (mission?.lat && mission?.lng) {
-      // Open Google Maps navigation
-      window.open(`https://www.google.com/maps/dir/?api=1&destination=${mission.lat},${mission.lng}`, '_blank');
-    } else {
-      alert("Location coordinates missing");
-    }
-  };
-
-  // Secondary Action: Call the user
-  const callUser = () => {
-    if (mission?.phoneNumber) {
-      window.open(`tel:${mission.phoneNumber}`);
-    } else {
-      alert("No phone number available");
-    }
-  };
-
-  // --- 3. UI RENDERING ---
   return (
-    <div className="h-screen bg-[#050505] text-white font-sans flex flex-col overflow-hidden selection:bg-red-500 selection:text-white">
-      
-      {/* --- HEADER --- */}
-      {/* Contains Logo and Logout Button */}
-      <header className="flex justify-between items-center px-6 py-4 z-10 select-none">
-        <div className="flex items-center gap-2">
-          <FaAmbulance className="text-red-600 text-2xl" />
-          <h1 className="text-xl font-black tracking-tighter">
-            RAPID<span className="text-red-600">RESCUE</span>
-          </h1>
-        </div>
-        <button 
-          onClick={logout} 
-          className="text-gray-400 hover:text-white transition-colors"
-        >
-          <FaSignOutAlt size={22} />
-        </button>
-      </header>
+    <div style={styles.page}>
+      {/* HEADER */}
+      <div style={styles.header}>
+        <span style={styles.logo}>RAPID<span style={{ color: "#ff3b3b" }}>RESCUE</span></span>
+      </div>
 
-      {/* --- MAIN CONTENT AREA --- */}
-      <main className="flex-1 flex flex-col items-center justify-center p-6 w-full max-w-lg mx-auto relative">
-        
-        {/* ============================================================
-            STATE 1: MISSION INTERFACE (ACTIVE CALL SCREEN)
-           ============================================================ */}
-        {mission ? (
-          <div className="w-full flex flex-col gap-6 animate-in fade-in duration-300">
-            
-            {/* EMERGENCY CARD */}
-            <div className="bg-[#121212] border border-gray-800 rounded-3xl p-8 pb-10 text-center relative shadow-2xl overflow-hidden">
-              {/* Red Glow Effect */}
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-1 bg-red-600 shadow-[0_0_30px_rgba(220,38,38,0.8)]"></div>
-              
-              {/* Center Icon */}
-              <div className="mx-auto w-24 h-24 bg-[#1a1a1a] rounded-full flex items-center justify-center mb-6 shadow-inner ring-1 ring-gray-800">
-                <FaLocationArrow className="text-blue-500 text-3xl transform -rotate-45" />
-              </div>
-
-              {/* Title & Location */}
-              <h2 className="text-2xl font-bold mb-2">Emergency Patient</h2>
-              <p className="text-gray-400 text-sm mb-6 font-medium">
-                {mission.location || "Location unavailable"}
-              </p>
-
-              {/* Live Badge */}
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-bold uppercase tracking-widest">
-                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
-                LIVE MISSION
-              </div>
-            </div>
-
-            {/* PRIMARY ACTION: NAVIGATE (Blue Button) */}
-            <button 
-              onClick={navigateToLocation}
-              className="w-full bg-[#3b82f6] hover:bg-[#2563eb] active:scale-95 transition-all text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-900/20 flex items-center justify-center gap-2 text-lg uppercase tracking-wider"
+      {/* MAIN */}
+      <div style={styles.center}>
+        {!mission ? (
+          <>
+            <div
+              style={{
+                ...styles.circle,
+                borderColor: online ? "#00ff85" : "#555",
+                color: online ? "#00ff85" : "#777",
+              }}
             >
-              <FaLocationArrow className="transform -rotate-45" /> NAVIGATE
+              ➤
+            </div>
+
+            <p style={styles.statusText}>
+              {online ? "SCANNING FOR CALLS..." : "SYSTEMS STANDBY"}
+            </p>
+
+            <button
+              onClick={() => setOnline(!online)}
+              style={{
+                ...styles.toggleBtn,
+                background: online ? "#00ff85" : "#333",
+              }}
+            >
+              {online ? "ONLINE" : "OFFLINE"}
             </button>
-
-            {/* SECONDARY ACTIONS: CALL & DONE */}
-            <div className="grid grid-cols-2 gap-4">
-              {/* Call Button */}
-              <button 
-                onClick={callUser}
-                className="bg-[#1f2937] hover:bg-[#374151] active:scale-95 transition-all text-gray-200 font-bold py-4 rounded-xl flex items-center justify-center gap-2 border border-gray-700"
-              >
-                <FaPhoneAlt size={16} /> Call
-              </button>
-
-              {/* Done Button (Green Outline) */}
-              <button 
-                onClick={completeMission}
-                className="bg-transparent hover:bg-green-900/10 active:scale-95 transition-all text-green-500 font-bold py-4 rounded-xl flex items-center justify-center gap-2 border border-green-600"
-              >
-                <FaCheck size={16} /> Done
-              </button>
-            </div>
-          </div>
+          </>
         ) : (
-          
-          /* ============================================================
-             STATE 2: DRIVER DASHBOARD (STATUS SCREEN)
-             ============================================================ */
-          <div className="w-full h-full flex flex-col justify-between py-8">
-            
-            {/* CENTRAL STATUS DISPLAY */}
-            <div className="flex-1 flex flex-col items-center justify-center">
-              {/* Icon Circle */}
-              <div className={`w-48 h-48 rounded-full border-2 flex items-center justify-center mb-8 relative transition-all duration-500
-                ${status === 'online' ? 'border-green-500 shadow-[0_0_40px_rgba(34,197,94,0.15)]' : 'border-gray-700'}`}>
-                 
-                 <FaLocationArrow className={`text-5xl transform -rotate-45 transition-colors duration-500 
-                   ${status === 'online' ? 'text-green-500' : 'text-gray-600'}`} />
-              </div>
-              
-              {/* Status Text */}
-              <h2 className={`font-bold tracking-[0.2em] text-xs uppercase animate-pulse
-                ${status === 'online' ? 'text-green-500' : 'text-gray-500'}`}>
-                {status === 'online' ? 'SCANNING FOR CALLS...' : 'SYSTEMS STANDBY'}
-              </h2>
-            </div>
+          /* MISSION CARD */
+          <div style={styles.card}>
+            <div style={styles.cardIcon}>➤</div>
+            <h3>{mission.patient}</h3>
+            <p style={{ color: "#aaa" }}>{mission.location}</p>
 
-            {/* BOTTOM CONTROLS */}
-            <div className="space-y-4">
-              
-              {/* ONLINE/OFFLINE TOGGLE BUTTON */}
-              <button 
-                onClick={toggleStatus}
-                className={`w-full py-5 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-all duration-300 shadow-lg
-                  ${status === 'online' 
-                    ? 'bg-green-600 text-white hover:bg-green-500 shadow-green-900/20' 
-                    : 'bg-[#1f2937] text-gray-400 hover:bg-[#374151]'
-                  }`}
-              >
-                <FaPowerOff />
-                {status === 'online' ? 'ONLINE' : 'OFFLINE'}
+            <span style={styles.live}>● LIVE MISSION</span>
+
+            <button style={styles.navigate}>NAVIGATE</button>
+
+            <div style={styles.actions}>
+              <button style={styles.call}>📞 Call</button>
+              <button style={styles.done} onClick={finishMission}>
+                ✔ Done
               </button>
-
-              {/* STATS PANEL (RESCUES & VEHICLE) */}
-              <div className="grid grid-cols-2 gap-4">
-                {/* Rescues Metric */}
-                <div className="bg-[#111] border border-gray-800 p-4 rounded-xl flex flex-col justify-between h-20">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">RESCUES</span>
-                    <FaHeartbeat className="text-red-600" />
-                  </div>
-                  <span className="text-xl font-bold text-white">1</span>
-                </div>
-
-                {/* Vehicle Metric */}
-                <div className="bg-[#111] border border-gray-800 p-4 rounded-xl flex flex-col justify-between h-20">
-                   <div className="flex justify-between items-center">
-                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">VEHICLE</span>
-                    <FaAmbulance className="text-blue-500" />
-                  </div>
-                  <span className="text-sm font-bold text-white">Pending</span>
-                </div>
-              </div>
-
             </div>
           </div>
         )}
-      </main>
+      </div>
+
+      {/* FOOTER STATS */}
+      <div style={styles.footer}>
+        <span>🚑 RESCUES: {rescues}</span>
+        <span>🚗 VEHICLE: Pending</span>
+      </div>
     </div>
   );
 }
+
+/* ================= STYLES ================= */
+
+const styles = {
+  page: {
+    background: "#0b0b0b",
+    color: "#fff",
+    height: "100vh",
+    display: "flex",
+    flexDirection: "column",
+    fontFamily: "Inter, sans-serif",
+  },
+  header: {
+    padding: "16px 24px",
+    borderBottom: "1px solid #222",
+  },
+  logo: {
+    fontWeight: "700",
+    letterSpacing: "1px",
+  },
+  center: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  circle: {
+    width: 90,
+    height: 90,
+    borderRadius: "50%",
+    border: "3px solid",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 30,
+    marginBottom: 16,
+  },
+  statusText: {
+    letterSpacing: "2px",
+    marginBottom: 24,
+    color: "#aaa",
+  },
+  toggleBtn: {
+    width: 260,
+    padding: 14,
+    borderRadius: 30,
+    border: "none",
+    color: "#000",
+    fontWeight: "700",
+    cursor: "pointer",
+  },
+  card: {
+    background: "#111",
+    padding: 30,
+    borderRadius: 14,
+    width: 320,
+    textAlign: "center",
+    boxShadow: "0 0 20px rgba(0,0,0,0.6)",
+  },
+  cardIcon: {
+    fontSize: 28,
+    color: "#3b82f6",
+    marginBottom: 10,
+  },
+  live: {
+    display: "inline-block",
+    margin: "10px 0",
+    padding: "4px 10px",
+    borderRadius: 12,
+    background: "#2a0000",
+    color: "#ff3b3b",
+    fontSize: 12,
+  },
+  navigate: {
+    width: "100%",
+    padding: 12,
+    marginTop: 12,
+    background: "#3b82f6",
+    color: "#fff",
+    border: "none",
+    borderRadius: 10,
+    fontWeight: "700",
+    cursor: "pointer",
+  },
+  actions: {
+    display: "flex",
+    gap: 10,
+    marginTop: 12,
+  },
+  call: {
+    flex: 1,
+    padding: 10,
+    background: "#222",
+    border: "none",
+    borderRadius: 8,
+    color: "#fff",
+    cursor: "pointer",
+  },
+  done: {
+    flex: 1,
+    padding: 10,
+    background: "#063",
+    border: "1px solid #00ff85",
+    borderRadius: 8,
+    color: "#00ff85",
+    cursor: "pointer",
+  },
+  footer: {
+    padding: 14,
+    display: "flex",
+    justifyContent: "space-between",
+    borderTop: "1px solid #222",
+    color: "#aaa",
+    fontSize: 13,
+  },
+};
