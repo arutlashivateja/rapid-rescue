@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { db } from '../services/firebase'; // Adjust path if needed
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { db } from '../services/firebase'; 
+import { collection, onSnapshot, query, orderBy, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 
 export default function ControlRoom() {
   const [drivers, setDrivers] = useState([]);
@@ -8,10 +8,8 @@ export default function ControlRoom() {
 
   // --- REAL-TIME DATABASE LISTENER ---
   useEffect(() => {
-    // Connect to the 'drivers' collection
     const q = query(collection(db, "drivers"), orderBy("createdAt", "desc"));
 
-    // onSnapshot listens for updates 24/7
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const driverList = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -20,30 +18,51 @@ export default function ControlRoom() {
 
       setDrivers(driverList);
 
-      // Calculate quick stats
       const online = driverList.filter(d => d.status === 'online').length;
       const busy = driverList.filter(d => d.status === 'busy').length;
       setStats({ total: driverList.length, online, busy });
     });
 
-    // Cleanup listener when you leave the page
     return () => unsubscribe();
   }, []);
+
+  // --- NEW: SEND REQUEST FUNCTION ---
+  const handleDispatch = async (driverId, driverName) => {
+    // 1. Ask Admin for Location
+    const location = window.prompt(`Enter Emergency Location for ${driverName}:`);
+    
+    if (!location) return; // Stop if they clicked Cancel
+
+    try {
+      // 2. Update the Driver's Database Document
+      const driverRef = doc(db, "drivers", driverId);
+      
+      await updateDoc(driverRef, {
+        status: "busy", // Mark them as busy immediately
+        currentMission: { // Add the mission details
+          location: location,
+          timestamp: serverTimestamp(),
+          status: "pending" // Waiting for driver to accept
+        }
+      });
+
+      alert(`🚨 Mission sent to ${driverName}!`);
+    } catch (error) {
+      console.error("Error dispatching:", error);
+      alert("Failed to send mission.");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-black text-white p-8 font-sans">
       
-      {/* HEADER SECTION */}
+      {/* HEADER */}
       <div className="flex justify-between items-center mb-10 border-b border-gray-800 pb-6">
         <div>
           <h1 className="text-4xl font-bold tracking-tighter text-red-600">RAPID<span className="text-white">RESCUE</span></h1>
           <p className="text-gray-400 text-sm tracking-widest mt-1">COMMAND CENTER // ADMIN ACCESS</p>
         </div>
         <div className="flex gap-6 text-sm font-mono">
-          <div className="text-center">
-            <span className="block text-2xl font-bold">{stats.total}</span>
-            <span className="text-gray-500">FLEET SIZE</span>
-          </div>
           <div className="text-center">
             <span className="block text-2xl font-bold text-green-500">{stats.online}</span>
             <span className="text-gray-500">ONLINE</span>
@@ -63,8 +82,7 @@ export default function ControlRoom() {
               <th className="p-4">Pilot Name</th>
               <th className="p-4">Vehicle ID</th>
               <th className="p-4">Status</th>
-              <th className="p-4 text-right">Missions</th>
-              <th className="p-4 text-right">Join Date</th>
+              <th className="p-4 text-center">Action</th> {/* NEW COLUMN */}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-800">
@@ -72,8 +90,9 @@ export default function ControlRoom() {
               <tr key={driver.id} className="hover:bg-gray-800/50 transition duration-150">
                 <td className="p-4 font-bold">{driver.name || "Unknown Pilot"}</td>
                 <td className="p-4 font-mono text-gray-400">{driver.vehicleNumber || "N/A"}</td>
+                
+                {/* Status Badge */}
                 <td className="p-4">
-                  {/* Status Badge */}
                   <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide
                     ${driver.status === 'online' ? 'bg-green-900 text-green-300 border border-green-700' : ''}
                     ${driver.status === 'busy' ? 'bg-yellow-900 text-yellow-300 border border-yellow-700' : ''}
@@ -82,24 +101,27 @@ export default function ControlRoom() {
                     {driver.status || "OFFLINE"}
                   </span>
                 </td>
-                <td className="p-4 text-right font-mono text-red-400">{driver.totalRescues || 0}</td>
-                <td className="p-4 text-right text-sm text-gray-500">
-                  {driver.createdAt?.toDate ? driver.createdAt.toDate().toLocaleDateString() : "Just Now"}
+
+                {/* NEW: DISPATCH BUTTON */}
+                <td className="p-4 text-center">
+                  {driver.status === 'online' ? (
+                    <button 
+                      onClick={() => handleDispatch(driver.id, driver.name)}
+                      className="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-4 rounded shadow-[0_0_10px_rgba(220,38,38,0.5)] transition-all transform hover:scale-105"
+                    >
+                      DISPATCH
+                    </button>
+                  ) : driver.status === 'busy' ? (
+                    <span className="text-yellow-500 font-mono text-xs animate-pulse">MISSION ACTIVE</span>
+                  ) : (
+                    <span className="text-gray-600 text-xs">UNAVAILABLE</span>
+                  )}
                 </td>
               </tr>
             ))}
-            
-            {drivers.length === 0 && (
-              <tr>
-                <td colSpan="5" className="p-8 text-center text-gray-500 italic">
-                  No pilots found in the database.
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
       </div>
-
     </div>
   );
 }
