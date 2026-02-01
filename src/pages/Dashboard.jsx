@@ -1,78 +1,79 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 
 export default function DriverDashboard() {
   const [online, setOnline] = useState(false);
-  const [mission, setMission] = useState(null);
+  const [mission, setMission] = useState(false);
   const [rescues, setRescues] = useState(1);
 
-  // Simulate incoming emergency call
+  // simulate incoming call ONLY when online
   useEffect(() => {
     if (online && !mission) {
-      const timer = setTimeout(() => {
-        setMission({
-          patient: "Emergency Patient",
-          location: "Location unavailable",
-        });
-      }, 4000); // simulate call after 4 sec
-
-      return () => clearTimeout(timer);
+      const t = setTimeout(() => {
+        setMission(true);
+      }, 3500);
+      return () => clearTimeout(t);
     }
   }, [online, mission]);
 
-  const finishMission = () => {
-    setMission(null);
-    setRescues((r) => r + 1);
-  };
-
   return (
-    <div style={styles.page}>
+    <div style={S.page}>
       {/* HEADER */}
-      <div style={styles.header}>
-        <span style={styles.logo}>RAPID<span style={{ color: "#ff3b3b" }}>RESCUE</span></span>
+      <div style={S.header}>
+        <span style={S.logo}>
+          RAPID<span style={{ color: "#ff2e2e" }}>RESCUE</span>
+        </span>
       </div>
 
-      {/* MAIN */}
-      <div style={styles.center}>
+      {/* BODY */}
+      <div style={S.body}>
         {!mission ? (
           <>
             <div
               style={{
-                ...styles.circle,
-                borderColor: online ? "#00ff85" : "#555",
-                color: online ? "#00ff85" : "#777",
+                ...S.circle,
+                borderColor: online ? "#00ff84" : "#444",
+                color: online ? "#00ff84" : "#666",
               }}
             >
               ➤
             </div>
 
-            <p style={styles.statusText}>
+            <div style={S.scanText}>
               {online ? "SCANNING FOR CALLS..." : "SYSTEMS STANDBY"}
-            </p>
+            </div>
 
             <button
-              onClick={() => setOnline(!online)}
               style={{
-                ...styles.toggleBtn,
-                background: online ? "#00ff85" : "#333",
+                ...S.onlineBtn,
+                background: online
+                  ? "linear-gradient(90deg,#0f0,#0a0)"
+                  : "#2a2a2a",
               }}
+              onClick={() => setOnline(!online)}
             >
               {online ? "ONLINE" : "OFFLINE"}
             </button>
           </>
         ) : (
-          /* MISSION CARD */
-          <div style={styles.card}>
-            <div style={styles.cardIcon}>➤</div>
-            <h3>{mission.patient}</h3>
-            <p style={{ color: "#aaa" }}>{mission.location}</p>
+          /* MISSION SCREEN */
+          <div style={S.card}>
+            <div style={S.cardIcon}>➤</div>
+            <h3>Emergency Patient</h3>
+            <p style={{ color: "#888" }}>Location unavailable</p>
 
-            <span style={styles.live}>● LIVE MISSION</span>
+            <div style={S.live}>● LIVE MISSION</div>
 
-            <button style={styles.navigate}>NAVIGATE</button>
+            <button style={S.navigate}>NAVIGATE</button>
 
-            <div style={styles.actions}>
-              <button style={styles.call}>📞 Call</button>
-              <button style={styles.done} onClick={finishMission}>
+            <div style={S.actions}>
+              <button style={S.call}>📞 Call</button>
+              <button
+                style={S.done}
+                onClick={() => {
+                  setMission(false);
+                  setRescues(r => r + 1);
+                }}
+              >
                 ✔ Done
               </button>
             </div>
@@ -80,35 +81,35 @@ export default function DriverDashboard() {
         )}
       </div>
 
-      {/* FOOTER STATS */}
-      <div style={styles.footer}>
-        <span>🚑 RESCUES: {rescues}</span>
-        <span>🚗 VEHICLE: Pending</span>
+      {/* FOOTER */}
+      <div style={S.footer}>
+        <span>RESCUES {rescues}</span>
+        <span>VEHICLE Pending</span>
       </div>
     </div>
   );
 }
 
-/* ================= STYLES ================= */
+/* ====== STYLES (LOCKED) ====== */
 
-const styles = {
+const S = {
   page: {
     background: "#0b0b0b",
     color: "#fff",
     height: "100vh",
     display: "flex",
     flexDirection: "column",
-    fontFamily: "Inter, sans-serif",
+    fontFamily: "Inter, system-ui",
   },
   header: {
-    padding: "16px 24px",
-    borderBottom: "1px solid #222",
+    padding: "14px 24px",
+    borderBottom: "1px solid #1f1f1f",
   },
   logo: {
-    fontWeight: "700",
-    letterSpacing: "1px",
+    fontWeight: 700,
+    letterSpacing: 1,
   },
-  center: {
+  body: {
     flex: 1,
     display: "flex",
     flexDirection: "column",
@@ -116,62 +117,62 @@ const styles = {
     justifyContent: "center",
   },
   circle: {
-    width: 90,
-    height: 90,
+    width: 92,
+    height: 92,
     borderRadius: "50%",
     border: "3px solid",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: 30,
-    marginBottom: 16,
+    fontSize: 32,
+    marginBottom: 18,
   },
-  statusText: {
-    letterSpacing: "2px",
-    marginBottom: 24,
+  scanText: {
+    letterSpacing: 2,
+    fontSize: 13,
     color: "#aaa",
+    marginBottom: 26,
   },
-  toggleBtn: {
-    width: 260,
+  onlineBtn: {
+    width: 320,
     padding: 14,
     borderRadius: 30,
     border: "none",
-    color: "#000",
-    fontWeight: "700",
+    fontWeight: 700,
     cursor: "pointer",
+    color: "#000",
   },
   card: {
     background: "#111",
-    padding: 30,
-    borderRadius: 14,
-    width: 320,
+    padding: 28,
+    borderRadius: 16,
+    width: 330,
     textAlign: "center",
-    boxShadow: "0 0 20px rgba(0,0,0,0.6)",
+    boxShadow: "0 0 30px rgba(0,0,0,0.7)",
   },
   cardIcon: {
-    fontSize: 28,
+    fontSize: 30,
     color: "#3b82f6",
-    marginBottom: 10,
+    marginBottom: 12,
   },
   live: {
-    display: "inline-block",
-    margin: "10px 0",
-    padding: "4px 10px",
-    borderRadius: 12,
+    margin: "10px auto",
+    width: "fit-content",
+    padding: "5px 12px",
+    borderRadius: 14,
     background: "#2a0000",
     color: "#ff3b3b",
     fontSize: 12,
   },
   navigate: {
     width: "100%",
-    padding: 12,
+    padding: 13,
     marginTop: 12,
     background: "#3b82f6",
-    color: "#fff",
     border: "none",
-    borderRadius: 10,
-    fontWeight: "700",
-    cursor: "pointer",
+    borderRadius: 12,
+    fontWeight: 700,
+    color: "#fff",
   },
   actions: {
     display: "flex",
@@ -183,25 +184,23 @@ const styles = {
     padding: 10,
     background: "#222",
     border: "none",
-    borderRadius: 8,
+    borderRadius: 10,
     color: "#fff",
-    cursor: "pointer",
   },
   done: {
     flex: 1,
     padding: 10,
-    background: "#063",
-    border: "1px solid #00ff85",
-    borderRadius: 8,
-    color: "#00ff85",
-    cursor: "pointer",
+    background: "#062f1c",
+    border: "1px solid #00ff84",
+    borderRadius: 10,
+    color: "#00ff84",
   },
   footer: {
     padding: 14,
     display: "flex",
     justifyContent: "space-between",
-    borderTop: "1px solid #222",
-    color: "#aaa",
+    borderTop: "1px solid #1f1f1f",
     fontSize: 13,
+    color: "#aaa",
   },
 };
