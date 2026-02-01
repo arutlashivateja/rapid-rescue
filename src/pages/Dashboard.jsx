@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { doc, updateDoc } from 'firebase/firestore'; // Import Firestore functions
-import { db } from '../firebase'; // <--- MAKE SURE THIS PATH IS CORRECT for your project
+import { db } from '../firebase.js'; // <--- MAKE SURE THIS PATH IS CORRECT for your project
 
 export default function Dashboard() {
   const { user, profile, logout } = useAuth();
@@ -106,4 +106,13 @@ export default function Dashboard() {
       </main>
 
       <footer className="w-full max-w-md mt-10 text-center">
-        <button
+        <button 
+          onClick={handleLogout}
+          className="px-6 py-2 text-sm text-gray-500 hover:text-white transition-colors uppercase tracking-widest"
+        >
+          End Shift & Logout
+        </button>
+      </footer>
+    </div>
+  );
+}
