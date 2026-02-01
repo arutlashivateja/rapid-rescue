@@ -163,7 +163,7 @@ export default function SignIn() {
             onClick={() => setIsLogin(!isLogin)}
             className="text-neutral-500 text-xs hover:text-white transition-colors underline decoration-neutral-800 underline-offset-4"
           >
-            {isLogin ? "New Personnel? Register Here" : "Already have an ID? Login"}
+            {isLogin ? "New Person? Register Here" : "Already have an ID? Login"}
           </button>
         </div>
 
