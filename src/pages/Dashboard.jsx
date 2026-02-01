@@ -2,29 +2,32 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../services/firebase';
 import { doc, updateDoc, onSnapshot } from 'firebase/firestore';
-import { GoogleMap, LoadScript, Marker } from '@react-google-maps/api'; // Assuming you use this
-import { FaPhone, FaMapMarkerAlt, FaCheck, FaSignOutAlt } from 'react-icons/fa'; // Icons
-
-// --- CONSTANTS ---
-const containerStyle = { width: '100%', height: '100%' };
-const center = { lat: 17.3850, lng: 78.4867 }; // Default (Hyderabad)
+import { 
+  FaPowerOff, 
+  FaLocationArrow, 
+  FaPhoneAlt, 
+  FaCheck, 
+  FaSignOutAlt, 
+  FaHeartbeat, 
+  FaAmbulance 
+} from 'react-icons/fa';
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
   const [status, setStatus] = useState("offline");
   const [mission, setMission] = useState(null); 
 
-  // --- 1. LISTENER ---
+  // --- 1. FIREBASE LISTENER ---
   useEffect(() => {
     if (!user) return;
     const driverRef = doc(db, "drivers", user.uid);
     const unsubscribe = onSnapshot(driverRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        setStatus(data.status);
+        setStatus(data.status || "offline");
         
-        // Check if there is an active or pending mission
-        if (data.currentMission) {
+        // Check for active mission
+        if (data.currentMission && (data.currentMission.status === 'accepted' || data.currentMission.status === 'pending')) {
           setMission(data.currentMission);
         } else {
           setMission(null);
@@ -37,24 +40,30 @@ export default function Dashboard() {
   // --- 2. ACTIONS ---
   const toggleStatus = async () => {
     const newStatus = status === "offline" ? "online" : "offline";
-    await updateDoc(doc(db, "drivers", user.uid), { status: newStatus });
-  };
-
-  const acceptMission = async () => {
-    await updateDoc(doc(db, "drivers", user.uid), { "currentMission.status": "accepted" });
+    try {
+      await updateDoc(doc(db, "drivers", user.uid), { status: newStatus });
+    } catch (e) {
+      console.error("Error toggling status", e);
+    }
   };
 
   const completeMission = async () => {
-    if(!window.confirm("Mark mission as done?")) return;
-    await updateDoc(doc(db, "drivers", user.uid), { 
-      status: "online", 
-      currentMission: null 
-    });
+    if(!window.confirm("Complete this mission?")) return;
+    try {
+      await updateDoc(doc(db, "drivers", user.uid), { 
+        status: "online", 
+        currentMission: null 
+      });
+    } catch (e) {
+      console.error("Error completing mission", e);
+    }
   };
 
   const navigateToLocation = () => {
     if (mission?.lat && mission?.lng) {
       window.open(`https://www.google.com/maps/dir/?api=1&destination=${mission.lat},${mission.lng}`, '_blank');
+    } else {
+      alert("Location coordinates missing");
     }
   };
 
@@ -62,127 +71,141 @@ export default function Dashboard() {
     if (mission?.phoneNumber) {
       window.open(`tel:${mission.phoneNumber}`);
     } else {
-      alert("No phone number provided");
+      alert("No phone number available");
     }
   };
 
-  // --- 3. RENDER UI ---
+  // --- 3. UI RENDER ---
   return (
-    <div className="h-screen flex flex-col bg-gray-100">
+    <div className="h-screen bg-[#050505] text-white font-sans flex flex-col overflow-hidden">
       
-      {/* --- A. HEADER (ALWAYS VISIBLE) --- */}
-      <header className="bg-white shadow-md p-4 flex justify-between items-center z-50 relative">
-        <div className="flex items-center gap-2">
-           {/* Logo / Name */}
-           <div className="bg-red-600 text-white p-2 rounded-lg font-bold">RR</div>
-           <h1 className="text-xl font-bold tracking-tight text-gray-800">
-             RAPID<span className="text-red-600">RESCUE</span>
-           </h1>
+      {/* --- HEADER (Common to both) --- */}
+      <header className="flex justify-between items-center px-6 py-4 z-10">
+        <div className="flex items-center gap-2 select-none">
+          <FaAmbulance className="text-red-600 text-2xl" />
+          <h1 className="text-xl font-black tracking-tighter">
+            RAPID<span className="text-red-600">RESCUE</span>
+          </h1>
         </div>
-        
-        {/* Logout Icon */}
-        <button onClick={logout} className="text-gray-500 hover:text-red-600 transition">
-          <FaSignOutAlt size={24} />
+        <button 
+          onClick={logout} 
+          className="text-gray-400 hover:text-white transition-colors"
+        >
+          <FaSignOutAlt size={22} />
         </button>
       </header>
 
-
-      {/* --- B. MAIN CONTENT AREA --- */}
-      <main className="flex-1 relative">
+      {/* --- MAIN CONTENT --- */}
+      <main className="flex-1 flex flex-col items-center justify-center p-6 w-full max-w-lg mx-auto relative">
         
-        {/* SCENARIO 1: MISSION IS ACTIVE OR PENDING */}
+        {/* === PAGE 1: ACTIVE MISSION === */}
         {mission ? (
-          <div className="absolute inset-0 z-40 bg-white flex flex-col">
+          <div className="w-full flex flex-col gap-6 animate-in fade-in duration-300">
             
-            {/* If Pending: Show Accept Screen (Simplified) */}
-            {mission.status === 'pending' && (
-               <div className="flex-1 flex flex-col items-center justify-center bg-red-600 text-white animate-pulse">
-                  <h2 className="text-3xl font-bold mb-4">🚨 NEW REQUEST</h2>
-                  <p className="text-xl mb-8">{mission.location}</p>
-                  <button onClick={acceptMission} className="bg-white text-red-600 px-10 py-4 rounded-full font-bold text-xl shadow-lg">
-                    ACCEPT CALL
-                  </button>
-               </div>
-            )}
-
-            {/* If Accepted: Show "Call Page" with Navigate/Done/Call */}
-            {mission.status === 'accepted' && (
-              <div className="flex-1 flex flex-col p-6">
-                
-                {/* Location Info Card */}
-                <div className="bg-gray-50 bg-opacity-90 p-6 rounded-xl shadow-sm border border-gray-200 mb-auto mt-4">
-                  <h3 className="text-gray-500 text-sm font-bold uppercase mb-2">Destination</h3>
-                  <div className="flex items-start gap-3">
-                    <FaMapMarkerAlt className="text-red-600 mt-1" size={24} />
-                    <h2 className="text-2xl font-bold text-gray-800 leading-tight">
-                      {mission.location || "Unknown Location"}
-                    </h2>
-                  </div>
-                </div>
-
-                {/* ACTION BUTTONS (Navigate, Call, Done) */}
-                <div className="grid grid-cols-2 gap-4 mt-8 mb-8">
-                  
-                  {/* Navigate */}
-                  <button 
-                    onClick={navigateToLocation}
-                    className="col-span-2 bg-blue-600 hover:bg-blue-700 text-white py-5 rounded-xl font-bold text-lg flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-transform"
-                  >
-                    <FaMapMarkerAlt /> NAVIGATE
-                  </button>
-
-                  {/* Call */}
-                  <button 
-                    onClick={callUser}
-                    className="bg-green-500 hover:bg-green-600 text-white py-5 rounded-xl font-bold text-lg flex items-center justify-center gap-2 shadow-md active:scale-95 transition-transform"
-                  >
-                    <FaPhone /> CALL
-                  </button>
-
-                  {/* Done */}
-                  <button 
-                    onClick={completeMission}
-                    className="bg-gray-800 hover:bg-gray-900 text-white py-5 rounded-xl font-bold text-lg flex items-center justify-center gap-2 shadow-md active:scale-95 transition-transform"
-                  >
-                    <FaCheck /> DONE
-                  </button>
-
-                </div>
+            {/* Dark Card */}
+            <div className="bg-[#121212] border border-gray-800 rounded-3xl p-8 pb-10 text-center relative shadow-2xl">
+              {/* Red Top Glow */}
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-1 bg-red-600 shadow-[0_0_20px_rgba(220,38,38,0.6)]"></div>
+              
+              {/* Icon Circle */}
+              <div className="mx-auto w-24 h-24 bg-[#1a1a1a] rounded-full flex items-center justify-center mb-6 shadow-inner ring-1 ring-gray-800">
+                <FaLocationArrow className="text-blue-500 text-3xl transform -rotate-45" />
               </div>
-            )}
-          </div>
 
-        ) : (
-          
-        /* SCENARIO 2: DEFAULT DASHBOARD (Map + Toggle) */
-          <div className="w-full h-full relative">
-            
-            {/* The Map Background */}
-            <LoadScript googleMapsApiKey="YOUR_API_KEY_HERE">
-              <GoogleMap mapContainerStyle={containerStyle} center={center} zoom={15}>
-                 {/* Optional: Show driver's current location marker here */}
-              </GoogleMap>
-            </LoadScript>
+              <h2 className="text-2xl font-bold mb-2">Emergency Patient</h2>
+              <p className="text-gray-400 text-sm mb-6 font-medium">
+                {mission.location || "Location unavailable"}
+              </p>
 
-            {/* Online/Offline Toggle (Floating at bottom) */}
-            <div className="absolute bottom-10 left-0 right-0 flex justify-center pb-4">
-              <button 
-                onClick={toggleStatus}
-                className={`
-                  px-8 py-4 rounded-full font-bold text-lg shadow-2xl border-4 transition-all transform hover:scale-105
-                  ${status === 'online' 
-                    ? 'bg-green-500 border-white text-white' 
-                    : 'bg-gray-800 border-gray-600 text-gray-400'
-                  }
-                `}
-              >
-                {status === 'online' ? 'YOU ARE ONLINE' : 'GO ONLINE'}
-              </button>
+              {/* Live Badge */}
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-bold uppercase tracking-widest">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+                Live Mission
+              </div>
             </div>
 
+            {/* Blue Navigate Button */}
+            <button 
+              onClick={navigateToLocation}
+              className="w-full bg-[#3b82f6] hover:bg-[#2563eb] active:scale-95 transition-all text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-900/20 flex items-center justify-center gap-2 text-lg uppercase tracking-wider"
+            >
+              <FaLocationArrow className="transform -rotate-45" /> Navigate
+            </button>
+
+            {/* Split Action Buttons */}
+            <div className="grid grid-cols-2 gap-4">
+              <button 
+                onClick={callUser}
+                className="bg-[#1f2937] hover:bg-[#374151] active:scale-95 transition-all text-gray-200 font-bold py-4 rounded-xl flex items-center justify-center gap-2 border border-gray-700"
+              >
+                <FaPhoneAlt size={16} /> Call
+              </button>
+
+              <button 
+                onClick={completeMission}
+                className="bg-transparent hover:bg-green-900/20 active:scale-95 transition-all text-green-500 font-bold py-4 rounded-xl flex items-center justify-center gap-2 border border-green-600"
+              >
+                <FaCheck size={16} /> Done
+              </button>
+            </div>
+          </div>
+        ) : (
+          
+          /* === PAGE 2: DASHBOARD (STANDBY) === */
+          <div className="w-full h-full flex flex-col justify-between py-8">
+            
+            {/* Center Status Icon */}
+            <div className="flex-1 flex flex-col items-center justify-center">
+              <div className={`w-48 h-48 rounded-full border-2 flex items-center justify-center mb-8 relative transition-all duration-500
+                ${status === 'online' ? 'border-green-500 shadow-[0_0_30px_rgba(34,197,94,0.2)]' : 'border-gray-700'}`}>
+                 
+                 <FaLocationArrow className={`text-5xl transform -rotate-45 transition-colors duration-500 
+                   ${status === 'online' ? 'text-green-500' : 'text-gray-600'}`} />
+              </div>
+              
+              <h2 className="text-gray-500 font-bold tracking-[0.2em] text-xs uppercase animate-pulse">
+                {status === 'online' ? 'Scanning for calls...' : 'Systems Standby'}
+              </h2>
+            </div>
+
+            {/* Bottom Controls */}
+            <div className="space-y-4">
+              
+              {/* Toggle Button */}
+              <button 
+                onClick={toggleStatus}
+                className={`w-full py-5 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-all duration-300 shadow-lg
+                  ${status === 'online' 
+                    ? 'bg-green-600 text-white hover:bg-green-500' 
+                    : 'bg-[#1f2937] text-gray-400 hover:bg-[#374151]'
+                  }`}
+              >
+                <FaPowerOff />
+                {status === 'online' ? 'ONLINE' : 'OFFLINE'}
+              </button>
+
+              {/* Stats Grid */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-[#111] border border-gray-800 p-4 rounded-xl flex flex-col justify-between h-20">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">Rescues</span>
+                    <FaHeartbeat className="text-red-600" />
+                  </div>
+                  <span className="text-xl font-bold text-white">1</span>
+                </div>
+
+                <div className="bg-[#111] border border-gray-800 p-4 rounded-xl flex flex-col justify-between h-20">
+                   <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">Vehicle</span>
+                    <FaAmbulance className="text-blue-500" />
+                  </div>
+                  <span className="text-sm font-bold text-white">Pending</span>
+                </div>
+              </div>
+
+            </div>
           </div>
         )}
-
       </main>
     </div>
   );
