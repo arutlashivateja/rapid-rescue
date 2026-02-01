@@ -6,7 +6,7 @@ export default function ControlRoom() {
   const [drivers, setDrivers] = useState([]);
   const [stats, setStats] = useState({ total: 0, online: 0, busy: 0 });
 
-  // --- REAL-TIME DATABASE LISTENER ---
+  // --- REAL-TIME LISTENER ---
   useEffect(() => {
     const q = query(collection(db, "drivers"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -45,36 +45,43 @@ export default function ControlRoom() {
   };
 
   return (
-    // CHANGE 1: 'p-2' for mobile, 'md:p-8' for laptop
     <div className="min-h-screen bg-black text-white p-2 md:p-8 font-sans">
       
-      {/* HEADER */}
-      <div className="flex justify-between items-center mb-6 border-b border-gray-800 pb-4">
-        <div>
-          <h1 className="text-2xl md:text-4xl font-bold tracking-tighter text-red-600">RAPID<span className="text-white">RESCUE</span></h1>
-          <p className="text-gray-400 text-xs md:text-sm tracking-widest mt-1">ADMIN CONTROL</p>
+      {/* HEADER SECTION - FIXED FOR MOBILE & LAPTOP */}
+      <div className="flex flex-col md:flex-row justify-between items-center mb-6 border-b border-gray-800 pb-4">
+        
+        {/* Title */}
+        <div className="mb-4 md:mb-0 text-center md:text-left">
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tighter text-red-600">RAPID<span className="text-white">RESCUE</span></h1>
+          <p className="text-gray-400 text-xs tracking-widest mt-1">COMMAND CENTER</p>
         </div>
-        {/* Hide stats on tiny screens to save space, or stack them */}
-        <div className="hidden md:flex gap-6 text-sm font-mono">
-          <div className="text-center">
-            <span className="block text-2xl font-bold">{stats.total}</span>
-            <span className="text-gray-500">FLEET</span>
+
+        {/* Stats - Now visible on Phone (flex) and Laptop */}
+        <div className="flex gap-4 md:gap-8 text-sm font-mono bg-gray-900 md:bg-transparent p-3 md:p-0 rounded-lg">
+          
+          <div className="text-center px-2">
+            <span className="block text-xl md:text-2xl font-bold text-white">{stats.total}</span>
+            <span className="text-gray-500 text-xs">FLEET</span>
           </div>
-          <div className="text-center">
-            <span className="block text-2xl font-bold text-green-500">{stats.online}</span>
-            <span className="text-gray-500">ONLINE</span>
+          
+          <div className="text-center px-2 border-l border-gray-700 md:border-none">
+            <span className="block text-xl md:text-2xl font-bold text-green-500">{stats.online}</span>
+            <span className="text-gray-500 text-xs">ONLINE</span>
           </div>
+
+          <div className="text-center px-2 border-l border-gray-700 md:border-none">
+            <span className="block text-xl md:text-2xl font-bold text-yellow-500">{stats.busy}</span>
+            <span className="text-gray-500 text-xs">BUSY</span>
+          </div>
+
         </div>
       </div>
 
-      {/* DRIVER TABLE WRAPPER */}
-      {/* CHANGE 2: Explicit inline style for scroll to override any bugs */}
+      {/* DRIVER TABLE - KEEPING THE SCROLL FIX */}
       <div 
         className="bg-gray-900 rounded-lg border border-gray-800 shadow-xl w-full"
         style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }} 
       >
-        
-        {/* CHANGE 3: min-w-[800px] forces the table to be wide, creating the scrollbar */}
         <table className="w-full text-left min-w-[800px]">
           <thead className="bg-gray-800 text-gray-400 font-mono text-sm uppercase tracking-wider">
             <tr>
@@ -106,6 +113,8 @@ export default function ControlRoom() {
                     >
                       DISPATCH
                     </button>
+                  ) : driver.status === 'busy' ? (
+                     <span className="text-yellow-500 font-mono text-xs animate-pulse">MISSION ACTIVE</span>
                   ) : (
                     <span className="text-gray-600 text-xs">UNAVAILABLE</span>
                   )}
