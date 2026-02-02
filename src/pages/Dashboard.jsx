@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { getApp } from "firebase/app"; // <--- 1. Import getApp
 import { 
   getFirestore, 
   doc, 
@@ -12,24 +13,25 @@ import {
 } from 'firebase/firestore'; 
 
 export default function Dashboard() {
-  const { user, profile, logout, auth } = useAuth(); // We get 'auth' to bypass firebase.js issues
+  const { user, profile, logout } = useAuth(); 
   const navigate = useNavigate();
   
-  // --- DATABASE CONNECTION (No firebase.js changes needed) ---
-  // We grab the database instance directly from the existing auth app
-  const db = getFirestore(auth.app); 
+  // --- DATABASE CONNECTION (FIXED) ---
+  // Instead of importing from firebase.js, we grab the running app instance directly.
+  const app = getApp(); 
+  const db = getFirestore(app); 
 
   // --- STATE ---
   const [isOnline, setIsOnline] = useState(false);
-  const [incomingRequest, setIncomingRequest] = useState(null); // Stores the incoming call
-  const [activeRide, setActiveRide] = useState(null); // Stores the accepted ride
+  const [incomingRequest, setIncomingRequest] = useState(null); 
+  const [activeRide, setActiveRide] = useState(null); 
 
-  // 1. LISTEN FOR CALLS (Logic: When online, look for 'pending' requests)
+  // 1. LISTEN FOR CALLS
   useEffect(() => {
-    if (!isOnline || !user) return;
+    // Safety check: Don't run if user is missing or db isn't ready
+    if (!isOnline || !user || !db) return;
 
-    // Listen to the 'rideRequests' collection for any pending emergency
-    // Note: Change "rideRequests" to your actual collection name if different
+    // Listen to the 'rideRequests' collection
     const q = query(
       collection(db, "rideRequests"), 
       where("status", "==", "pending") 
@@ -37,15 +39,14 @@ export default function Dashboard() {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       if (!snapshot.empty) {
-        // Get the first request found
         const requestData = snapshot.docs[0].data();
         const requestId = snapshot.docs[0].id;
-        
-        // Trigger the "Incoming Call" alert
         setIncomingRequest({ id: requestId, ...requestData });
       } else {
         setIncomingRequest(null);
       }
+    }, (error) => {
+      console.error("Error listening to rides:", error);
     });
 
     return () => unsubscribe();
@@ -57,7 +58,6 @@ export default function Dashboard() {
     const newStatus = !isOnline;
     setIsOnline(newStatus);
 
-    // Optional: Update status in DB so Admin sees it
     try {
       await updateDoc(doc(db, "users", user.uid), {
         status: newStatus ? 'online' : 'offline'
@@ -72,14 +72,12 @@ export default function Dashboard() {
     if (!incomingRequest) return;
 
     try {
-      // Update the request in DB to show THIS driver accepted it
       await updateDoc(doc(db, "rideRequests", incomingRequest.id), {
         status: 'accepted',
         driverId: user.uid,
         driverName: profile?.name || 'Unknown Driver'
       });
 
-      // Move UI to "Active Ride" mode
       setActiveRide(incomingRequest);
       setIncomingRequest(null); 
     } catch (error) {
@@ -133,7 +131,7 @@ export default function Dashboard() {
               <p><span className="text-gray-500">Type:</span> {activeRide.emergencyType || 'General'}</p>
             </div>
             <button 
-              onClick={() => setActiveRide(null)} // Placeholder for "Complete Ride"
+              onClick={() => setActiveRide(null)}
               className="mt-6 w-full bg-blue-600 py-3 rounded font-bold hover:bg-blue-500"
             >
               COMPLETE MISSION
@@ -143,7 +141,7 @@ export default function Dashboard() {
 
       </main>
 
-      {/* --- INCOMING CALL POPUP (The "Logic" you asked for) --- */}
+      {/* --- INCOMING CALL POPUP --- */}
       {incomingRequest && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4 animate-bounce-in">
           <div className="bg-red-900/40 border-2 border-red-500 w-full max-w-md p-6 rounded-2xl shadow-[0_0_100px_rgba(220,38,38,0.5)] text-center backdrop-blur-md">
@@ -176,7 +174,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Footer */}
       <footer className="absolute bottom-6 w-full text-center left-0">
         <button onClick={handleLogout} className="text-gray-600 text-sm hover:text-white">
           LOGOUT
