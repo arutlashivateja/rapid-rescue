@@ -1,116 +1,185 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { doc, updateDoc } from 'firebase/firestore'; // Import Firestore functions
-import { db } from '../firebase.js'; // <--- MAKE SURE THIS PATH IS CORRECT for your project
+import { 
+  getFirestore, 
+  doc, 
+  updateDoc, 
+  collection, 
+  query, 
+  where, 
+  onSnapshot 
+} from 'firebase/firestore'; 
 
 export default function Dashboard() {
-  const { user, profile, logout } = useAuth();
+  const { user, profile, logout, auth } = useAuth(); // We get 'auth' to bypass firebase.js issues
   const navigate = useNavigate();
+  
+  // --- DATABASE CONNECTION (No firebase.js changes needed) ---
+  // We grab the database instance directly from the existing auth app
+  const db = getFirestore(auth.app); 
+
+  // --- STATE ---
   const [isOnline, setIsOnline] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [incomingRequest, setIncomingRequest] = useState(null); // Stores the incoming call
+  const [activeRide, setActiveRide] = useState(null); // Stores the accepted ride
 
-  // 1. Load initial status from profile when page opens
+  // 1. LISTEN FOR CALLS (Logic: When online, look for 'pending' requests)
   useEffect(() => {
-    if (profile?.status === 'online') {
-      setIsOnline(true);
-    }
-  }, [profile]);
+    if (!isOnline || !user) return;
 
-  // 2. The function that actually updates the Database
+    // Listen to the 'rideRequests' collection for any pending emergency
+    // Note: Change "rideRequests" to your actual collection name if different
+    const q = query(
+      collection(db, "rideRequests"), 
+      where("status", "==", "pending") 
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty) {
+        // Get the first request found
+        const requestData = snapshot.docs[0].data();
+        const requestId = snapshot.docs[0].id;
+        
+        // Trigger the "Incoming Call" alert
+        setIncomingRequest({ id: requestId, ...requestData });
+      } else {
+        setIncomingRequest(null);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [isOnline, user, db]);
+
+  // 2. TOGGLE ONLINE/OFFLINE
   const toggleStatus = async () => {
     if (!user) return;
-    
-    setLoading(true);
-    const newStatus = !isOnline; // The status we want to switch to
+    const newStatus = !isOnline;
+    setIsOnline(newStatus);
+
+    // Optional: Update status in DB so Admin sees it
+    try {
+      await updateDoc(doc(db, "users", user.uid), {
+        status: newStatus ? 'online' : 'offline'
+      });
+    } catch (e) {
+      console.log("Status update skipped (optional)");
+    }
+  };
+
+  // 3. ACCEPT CALL LOGIC
+  const acceptRide = async () => {
+    if (!incomingRequest) return;
 
     try {
-      // Reference to the specific driver's document in the 'users' collection
-      const driverRef = doc(db, "users", user.uid);
-
-      // Update the status field in Firestore
-      await updateDoc(driverRef, {
-        status: newStatus ? 'online' : 'offline',
-        lastUpdated: new Date()
+      // Update the request in DB to show THIS driver accepted it
+      await updateDoc(doc(db, "rideRequests", incomingRequest.id), {
+        status: 'accepted',
+        driverId: user.uid,
+        driverName: profile?.name || 'Unknown Driver'
       });
 
-      // Update local state (UI) only after DB success
-      setIsOnline(newStatus);
-      
+      // Move UI to "Active Ride" mode
+      setActiveRide(incomingRequest);
+      setIncomingRequest(null); 
     } catch (error) {
-      console.error("Error updating status:", error);
-      alert("Failed to update status. Check your internet connection.");
+      console.error("Error accepting ride:", error);
+      alert("Could not accept ride. It might have been taken.");
     }
-    setLoading(false);
   };
 
   const handleLogout = async () => {
-    try {
-      // Optional: Set offline before logging out
-      if (isOnline && user) {
-        await updateDoc(doc(db, "users", user.uid), { status: 'offline' });
-      }
-      await logout();
-      navigate('/login');
-    } catch (error) {
-      console.error("Failed to log out", error);
-    }
+    await logout();
+    navigate('/login');
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-6 flex flex-col items-center">
+    <div className="min-h-screen bg-gray-900 text-white p-6 relative">
       
-      <header className="w-full max-w-md flex justify-between items-center mb-10 border-b border-gray-700 pb-4">
+      {/* --- HEADER --- */}
+      <header className="flex justify-between items-center mb-8 border-b border-gray-700 pb-4">
         <h1 className="text-xl font-bold text-red-500 tracking-wider">RAPID RESCUE</h1>
         <div className="text-right">
-          <div className="text-xs text-gray-400">DRIVER PILOT</div>
-          <div className="text-sm font-semibold text-white">
-            {profile?.name || user?.email}
+          <div className="text-xs text-gray-400">STATUS</div>
+          <div className={`text-sm font-bold ${isOnline ? 'text-green-400' : 'text-gray-500'}`}>
+            {isOnline ? 'ONLINE' : 'OFFLINE'}
           </div>
         </div>
       </header>
 
-      <main className="flex-1 w-full max-w-md flex flex-col items-center justify-center space-y-8">
+      {/* --- MAIN INTERFACE --- */}
+      <main className="flex flex-col items-center justify-center space-y-8 mt-10">
         
-        {/* Status Circle */}
-        <div className={`w-56 h-56 rounded-full border-8 flex items-center justify-center shadow-[0_0_40px_rgba(0,0,0,0.5)] transition-all duration-500 
-          ${isOnline 
-            ? 'border-green-500 bg-green-900/20 shadow-green-500/20' 
-            : 'border-gray-700 bg-gray-800/50'
-          }`}
-        >
-          <div className="text-center">
-            <div className={`text-4xl font-bold mb-2 ${isOnline ? 'text-green-400' : 'text-gray-500'}`}>
-              {isOnline ? 'ONLINE' : 'OFFLINE'}
-            </div>
-            <div className="text-xs uppercase tracking-widest text-gray-400">
-              {loading ? 'Updating...' : (isOnline ? 'Scanning for Emergencies...' : 'Standby Mode')}
-            </div>
-          </div>
-        </div>
+        {!activeRide && (
+          <button 
+            onClick={toggleStatus}
+            className={`w-64 h-64 rounded-full border-8 text-2xl font-bold tracking-widest shadow-[0_0_50px_rgba(0,0,0,0.5)] transition-all
+              ${isOnline 
+                ? 'border-green-500 bg-green-900/20 text-white animate-pulse' 
+                : 'border-gray-600 bg-gray-800 text-gray-500'
+              }`}
+          >
+            {isOnline ? 'SCANNING...' : 'GO ONLINE'}
+          </button>
+        )}
 
-        {/* Action Button */}
-        <button 
-          onClick={toggleStatus}
-          disabled={loading}
-          className={`w-full py-4 rounded-lg font-bold text-xl tracking-widest transition-all transform active:scale-95 shadow-lg
-            ${loading ? 'opacity-50 cursor-not-allowed' : ''}
-            ${isOnline 
-              ? 'bg-gray-800 hover:bg-gray-700 text-white border border-gray-600' 
-              : 'bg-green-600 hover:bg-green-500 text-white shadow-green-900/50'
-            }`}
-        >
-          {loading ? 'CONNECTING...' : (isOnline ? 'GO OFFLINE' : 'START SHIFT')}
-        </button>
+        {/* --- ACTIVE RIDE VIEW (After Accepting) --- */}
+        {activeRide && (
+          <div className="w-full max-w-md bg-gray-800 p-6 rounded-xl border-l-4 border-blue-500">
+            <h2 className="text-xl font-bold mb-4">🚑 CURRENT MISSION</h2>
+            <div className="space-y-2 text-gray-300">
+              <p><span className="text-gray-500">Patient:</span> {activeRide.patientName || 'Unknown'}</p>
+              <p><span className="text-gray-500">Location:</span> {activeRide.location || 'See Map'}</p>
+              <p><span className="text-gray-500">Type:</span> {activeRide.emergencyType || 'General'}</p>
+            </div>
+            <button 
+              onClick={() => setActiveRide(null)} // Placeholder for "Complete Ride"
+              className="mt-6 w-full bg-blue-600 py-3 rounded font-bold hover:bg-blue-500"
+            >
+              COMPLETE MISSION
+            </button>
+          </div>
+        )}
 
       </main>
 
-      <footer className="w-full max-w-md mt-10 text-center">
-        <button 
-          onClick={handleLogout}
-          className="px-6 py-2 text-sm text-gray-500 hover:text-white transition-colors uppercase tracking-widest"
-        >
-          End Shift & Logout
+      {/* --- INCOMING CALL POPUP (The "Logic" you asked for) --- */}
+      {incomingRequest && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4 animate-bounce-in">
+          <div className="bg-red-900/40 border-2 border-red-500 w-full max-w-md p-6 rounded-2xl shadow-[0_0_100px_rgba(220,38,38,0.5)] text-center backdrop-blur-md">
+            
+            <div className="text-3xl mb-2">🚨</div>
+            <h2 className="text-2xl font-bold text-white mb-1">EMERGENCY ALERT</h2>
+            <p className="text-red-300 text-sm mb-6 uppercase tracking-widest">New Request Received</p>
+            
+            <div className="bg-black/40 p-4 rounded-lg text-left mb-6 space-y-2">
+              <p className="text-lg font-semibold">{incomingRequest.emergencyType || "Medical Emergency"}</p>
+              <p className="text-gray-300 text-sm">📍 {incomingRequest.location || "Location Shared"}</p>
+            </div>
+
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setIncomingRequest(null)}
+                className="flex-1 py-4 bg-gray-700 rounded-lg font-bold text-gray-300 hover:bg-gray-600"
+              >
+                IGNORE
+              </button>
+              <button 
+                onClick={acceptRide}
+                className="flex-1 py-4 bg-red-600 rounded-lg font-bold text-white shadow-lg shadow-red-900/50 hover:bg-red-500 animate-pulse"
+              >
+                ACCEPT NOW
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Footer */}
+      <footer className="absolute bottom-6 w-full text-center left-0">
+        <button onClick={handleLogout} className="text-gray-600 text-sm hover:text-white">
+          LOGOUT
         </button>
       </footer>
     </div>
