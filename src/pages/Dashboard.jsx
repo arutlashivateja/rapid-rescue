@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { getApp } from "firebase/app"; 
-import { Ambulance, Zap, Phone, Navigation } from 'lucide-react'; // Added Phone & Navigation icons
+import { Ambulance, Zap, Phone, Navigation } from 'lucide-react'; 
 import { 
   getFirestore, 
   doc, 
@@ -33,6 +33,7 @@ export default function Dashboard() {
       if (docSnap.exists()) {
         const data = docSnap.data();
         
+        // Update local state based on DB
         setIsOnline(data.status === 'online');
 
         if (data.currentMission) {
@@ -52,7 +53,7 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, [user, db]);
 
-  // --- 2. GO ONLINE ---
+  // --- 2. GO ONLINE (FIXED: Safe Data Handling) ---
   const toggleStatus = async () => {
     if (!user) return;
     
@@ -61,18 +62,34 @@ export default function Dashboard() {
 
     try {
       if (newStatus) {
-        await setDoc(driverRef, {
-          name: profile?.name || user.email,
-          vehicleNumber: profile?.vehicleNumber || "Unknown-ID",
-          email: user.email,
+        // Prepare safe data (Firestore hates 'undefined')
+        const driverData = {
+          name: profile?.name || user.email || "Unknown Pilot",
+          vehicleNumber: profile?.vehicleNumber || "No-ID",
+          email: user.email || "No-Email",
           status: 'online',
           lastSeen: serverTimestamp()
+        };
+
+        // If createdAt is missing, we add it (Control Room sorts by this)
+        // We use setDoc with merge to ensure the document exists
+        await setDoc(driverRef, {
+            ...driverData,
+            createdAt: serverTimestamp() // Safe to overwrite or merge
         }, { merge: true });
+
       } else {
+        // Go Offline
         await updateDoc(driverRef, { status: 'offline' });
       }
     } catch (error) {
       console.error("Error updating status:", error);
+      // Fallback: If updateDoc fails (doc doesn't exist), try setDoc
+      if (!newStatus) {
+         try {
+            await setDoc(driverRef, { status: 'offline' }, { merge: true });
+         } catch(e) { console.error("Retry failed", e); }
+      }
     }
   };
 
@@ -91,16 +108,14 @@ export default function Dashboard() {
     }
   };
 
-  // --- 4. NEW LOGIC: NAVIGATE & CALL ---
+  // --- 4. NAVIGATE & CALL ---
   const handleNavigate = () => {
     if (!activeRide?.location) return;
-    // Opens Google Maps with the location query
     const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activeRide.location)}`;
     window.open(url, '_blank');
   };
 
   const handleCall = () => {
-    // Opens the phone dialer. Uses patient number if available, or blank to just open dialer.
     const number = activeRide?.patientPhone || ''; 
     window.location.href = `tel:${number}`;
   };
@@ -190,7 +205,7 @@ export default function Dashboard() {
           </button>
         )}
 
-        {/* --- ACTIVE RIDE CARD (UPDATED) --- */}
+        {/* --- ACTIVE RIDE CARD --- */}
         {activeRide && (
           <div className="w-full bg-neutral-900 p-6 rounded-3xl border border-blue-500/50 shadow-[0_0_40px_rgba(59,130,246,0.1)] relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 animate-pulse"></div>
@@ -201,13 +216,13 @@ export default function Dashboard() {
             </h2>
             
             <div className="space-y-4 text-neutral-300">
-              {/* Location Box (Single box now) */}
+              {/* Location Box */}
               <div className="bg-black/30 p-4 rounded-xl border border-neutral-800">
                 <span className="text-[10px] text-neutral-500 uppercase tracking-widest block mb-1">Patient Location</span> 
                 <span className="text-lg font-bold text-white leading-tight">{activeRide.location}</span>
               </div>
 
-              {/* ACTION BUTTONS (Navigate & Call) */}
+              {/* ACTION BUTTONS */}
               <div className="grid grid-cols-2 gap-4 mt-2">
                 <button 
                   onClick={handleNavigate}
