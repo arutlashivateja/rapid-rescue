@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { getApp } from "firebase/app"; 
-import { Ambulance, Zap } from 'lucide-react'; 
+import { Ambulance, Zap, Phone, Navigation } from 'lucide-react'; // Added Phone & Navigation icons
 import { 
   getFirestore, 
   doc, 
@@ -16,41 +16,32 @@ export default function Dashboard() {
   const { user, profile, logout } = useAuth(); 
   const navigate = useNavigate();
   
-  // Database Connection
   const app = getApp(); 
   const db = getFirestore(app); 
 
-  // State
   const [isOnline, setIsOnline] = useState(false);
   const [incomingRequest, setIncomingRequest] = useState(null); 
   const [activeRide, setActiveRide] = useState(null); 
 
   // --- 1. LISTEN TO YOUR DRIVER DOCUMENT ---
-  // This aligns with Control Room listening to "drivers" collection
   useEffect(() => {
     if (!user || !db) return;
 
-    // We listen specifically to: drivers/{user.uid}
     const driverRef = doc(db, "drivers", user.uid);
 
     const unsubscribe = onSnapshot(driverRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         
-        // A. Update Online Status based on DB
         setIsOnline(data.status === 'online');
 
-        // B. Check for Missions (Sent by Control Room)
         if (data.currentMission) {
           if (data.currentMission.status === 'pending') {
-            // New Mission Received!
             setIncomingRequest(data.currentMission);
           } else if (data.currentMission.status === 'accepted') {
-            // We are currently working on this mission
             setActiveRide(data.currentMission);
             setIncomingRequest(null);
           } else {
-             // Mission completed or cancelled
              setActiveRide(null);
              setIncomingRequest(null);
           }
@@ -61,7 +52,7 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, [user, db]);
 
-  // --- 2. GO ONLINE (And Register in 'drivers' collection) ---
+  // --- 2. GO ONLINE ---
   const toggleStatus = async () => {
     if (!user) return;
     
@@ -70,8 +61,6 @@ export default function Dashboard() {
 
     try {
       if (newStatus) {
-        // When going online, we MUST ensure the document exists in 'drivers'
-        // This makes you appear in the Control Room list
         await setDoc(driverRef, {
           name: profile?.name || user.email,
           vehicleNumber: profile?.vehicleNumber || "Unknown-ID",
@@ -80,14 +69,10 @@ export default function Dashboard() {
           lastSeen: serverTimestamp()
         }, { merge: true });
       } else {
-        // Go Offline
-        await updateDoc(driverRef, {
-          status: 'offline'
-        });
+        await updateDoc(driverRef, { status: 'offline' });
       }
     } catch (error) {
       console.error("Error updating status:", error);
-      alert("Connection failed. Check console.");
     }
   };
 
@@ -97,24 +82,33 @@ export default function Dashboard() {
     
     try {
       const driverRef = doc(db, "drivers", user.uid);
-      
-      // Update the mission status inside your document
       await updateDoc(driverRef, {
         "currentMission.status": "accepted",
-        status: "busy" // Make driver busy in Control Room
+        status: "busy"
       });
-      
     } catch (error) {
       console.error("Error accepting ride:", error);
     }
   };
 
-  // --- 4. COMPLETE MISSION ---
+  // --- 4. NEW LOGIC: NAVIGATE & CALL ---
+  const handleNavigate = () => {
+    if (!activeRide?.location) return;
+    // Opens Google Maps with the location query
+    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activeRide.location)}`;
+    window.open(url, '_blank');
+  };
+
+  const handleCall = () => {
+    // Opens the phone dialer. Uses patient number if available, or blank to just open dialer.
+    const number = activeRide?.patientPhone || ''; 
+    window.location.href = `tel:${number}`;
+  };
+
+  // --- 5. COMPLETE MISSION ---
   const completeRide = async () => {
     try {
       const driverRef = doc(db, "drivers", user.uid);
-      
-      // Clear the mission and go back to online
       await updateDoc(driverRef, {
         currentMission: null,
         status: "online"
@@ -126,7 +120,6 @@ export default function Dashboard() {
   };
 
   const handleLogout = async () => {
-    // Optional: Go offline on logout
     if (user && isOnline) {
        try { await updateDoc(doc(db, "drivers", user.uid), { status: 'offline' }); } catch(e){}
     }
@@ -134,10 +127,10 @@ export default function Dashboard() {
     navigate('/login');
   };
 
-  // --- UI REMAINS EXACTLY THE SAME ---
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-300 p-6 relative flex flex-col items-center">
       
+      {/* HEADER */}
       <header className="w-full max-w-md flex justify-between items-center mb-6 border-b border-neutral-800 pb-4">
         <div className="flex items-center gap-3">
           <div className="bg-neutral-800 p-2 rounded-xl border border-neutral-700 shadow-lg shadow-red-900/10">
@@ -161,6 +154,7 @@ export default function Dashboard() {
         </div>
       </header>
 
+      {/* STATS */}
       <div className="w-full max-w-md grid grid-cols-2 gap-4 mb-8">
         <div className="bg-neutral-900/50 p-4 rounded-2xl border border-neutral-800 text-center backdrop-blur-sm">
           <div className="text-[10px] text-neutral-500 uppercase tracking-[0.2em] mb-1">Total Rescues</div>
@@ -196,6 +190,7 @@ export default function Dashboard() {
           </button>
         )}
 
+        {/* --- ACTIVE RIDE CARD (UPDATED) --- */}
         {activeRide && (
           <div className="w-full bg-neutral-900 p-6 rounded-3xl border border-blue-500/50 shadow-[0_0_40px_rgba(59,130,246,0.1)] relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 animate-pulse"></div>
@@ -206,15 +201,29 @@ export default function Dashboard() {
             </h2>
             
             <div className="space-y-4 text-neutral-300">
+              {/* Location Box (Single box now) */}
               <div className="bg-black/30 p-4 rounded-xl border border-neutral-800">
                 <span className="text-[10px] text-neutral-500 uppercase tracking-widest block mb-1">Patient Location</span> 
-                <span className="text-lg font-bold text-white">{activeRide.location}</span>
+                <span className="text-lg font-bold text-white leading-tight">{activeRide.location}</span>
               </div>
-              <div className="bg-black/30 p-4 rounded-xl border border-neutral-800">
-                <span className="text-[10px] text-neutral-500 uppercase tracking-widest block mb-1">Time</span> 
-                <span className="text-lg font-bold text-white">
-                  {activeRide.timestamp ? new Date(activeRide.timestamp.seconds * 1000).toLocaleTimeString() : 'Now'}
-                </span>
+
+              {/* ACTION BUTTONS (Navigate & Call) */}
+              <div className="grid grid-cols-2 gap-4 mt-2">
+                <button 
+                  onClick={handleNavigate}
+                  className="bg-neutral-800 hover:bg-neutral-700 text-white py-4 rounded-xl font-bold flex flex-col items-center justify-center border border-neutral-700 transition-all active:scale-95"
+                >
+                  <Navigation className="w-6 h-6 mb-1 text-blue-500" />
+                  <span className="text-xs uppercase tracking-widest">Navigate</span>
+                </button>
+
+                <button 
+                  onClick={handleCall}
+                  className="bg-neutral-800 hover:bg-neutral-700 text-white py-4 rounded-xl font-bold flex flex-col items-center justify-center border border-neutral-700 transition-all active:scale-95"
+                >
+                  <Phone className="w-6 h-6 mb-1 text-green-500" />
+                  <span className="text-xs uppercase tracking-widest">Call</span>
+                </button>
               </div>
             </div>
 
@@ -229,6 +238,7 @@ export default function Dashboard() {
 
       </main>
 
+      {/* DISPATCH ALERT MODAL */}
       {incomingRequest && (
         <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-6 animate-in fade-in zoom-in duration-300">
           <div className="bg-neutral-900 border border-red-500/50 w-full max-w-md p-8 rounded-3xl shadow-[0_0_100px_rgba(220,38,38,0.4)] text-center relative overflow-hidden">
@@ -253,7 +263,7 @@ export default function Dashboard() {
 
               <div className="flex gap-4">
                 <button 
-                  onClick={() => setIncomingRequest(null)} // Admin will see driver is still online/idle
+                  onClick={() => setIncomingRequest(null)}
                   className="flex-1 py-4 bg-neutral-800 hover:bg-neutral-700 text-neutral-400 rounded-xl font-bold text-xs uppercase tracking-widest transition-colors"
                 >
                   Decline
