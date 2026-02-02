@@ -2,15 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { getApp } from "firebase/app"; 
-import { Ambulance, Zap } from 'lucide-react'; // Import the same icons
+import { Ambulance, Zap } from 'lucide-react'; 
 import { 
   getFirestore, 
   doc, 
   updateDoc, 
-  collection, 
-  query, 
-  where, 
-  onSnapshot 
+  setDoc,
+  onSnapshot,
+  serverTimestamp
 } from 'firebase/firestore'; 
 
 export default function Dashboard() {
@@ -26,67 +25,119 @@ export default function Dashboard() {
   const [incomingRequest, setIncomingRequest] = useState(null); 
   const [activeRide, setActiveRide] = useState(null); 
 
-  // --- 1. LISTEN FOR CALLS ---
+  // --- 1. LISTEN TO YOUR DRIVER DOCUMENT ---
+  // This aligns with Control Room listening to "drivers" collection
   useEffect(() => {
-    if (!isOnline || !user || !db) return;
+    if (!user || !db) return;
 
-    const q = query(
-      collection(db, "rideRequests"), 
-      where("status", "==", "pending") 
-    );
+    // We listen specifically to: drivers/{user.uid}
+    const driverRef = doc(db, "drivers", user.uid);
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      if (!snapshot.empty) {
-        const requestData = snapshot.docs[0].data();
-        const requestId = snapshot.docs[0].id;
-        setIncomingRequest({ id: requestId, ...requestData });
-      } else {
-        setIncomingRequest(null);
+    const unsubscribe = onSnapshot(driverRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        
+        // A. Update Online Status based on DB
+        setIsOnline(data.status === 'online');
+
+        // B. Check for Missions (Sent by Control Room)
+        if (data.currentMission) {
+          if (data.currentMission.status === 'pending') {
+            // New Mission Received!
+            setIncomingRequest(data.currentMission);
+          } else if (data.currentMission.status === 'accepted') {
+            // We are currently working on this mission
+            setActiveRide(data.currentMission);
+            setIncomingRequest(null);
+          } else {
+             // Mission completed or cancelled
+             setActiveRide(null);
+             setIncomingRequest(null);
+          }
+        }
       }
-    }, (error) => console.error(error));
+    });
 
     return () => unsubscribe();
-  }, [isOnline, user, db]);
+  }, [user, db]);
 
-  // --- 2. TOGGLE STATUS ---
+  // --- 2. GO ONLINE (And Register in 'drivers' collection) ---
   const toggleStatus = async () => {
     if (!user) return;
+    
     const newStatus = !isOnline;
-    setIsOnline(newStatus);
+    const driverRef = doc(db, "drivers", user.uid);
 
     try {
-      await updateDoc(doc(db, "users", user.uid), {
-        status: newStatus ? 'online' : 'offline'
-      });
-    } catch (e) { console.log("Status update skipped"); }
+      if (newStatus) {
+        // When going online, we MUST ensure the document exists in 'drivers'
+        // This makes you appear in the Control Room list
+        await setDoc(driverRef, {
+          name: profile?.name || user.email,
+          vehicleNumber: profile?.vehicleNumber || "Unknown-ID",
+          email: user.email,
+          status: 'online',
+          lastSeen: serverTimestamp()
+        }, { merge: true });
+      } else {
+        // Go Offline
+        await updateDoc(driverRef, {
+          status: 'offline'
+        });
+      }
+    } catch (error) {
+      console.error("Error updating status:", error);
+      alert("Connection failed. Check console.");
+    }
   };
 
-  // --- 3. ACCEPT RIDE ---
+  // --- 3. ACCEPT MISSION ---
   const acceptRide = async () => {
     if (!incomingRequest) return;
+    
     try {
-      await updateDoc(doc(db, "rideRequests", incomingRequest.id), {
-        status: 'accepted',
-        driverId: user.uid,
-        driverName: profile?.name || 'Unknown Driver'
+      const driverRef = doc(db, "drivers", user.uid);
+      
+      // Update the mission status inside your document
+      await updateDoc(driverRef, {
+        "currentMission.status": "accepted",
+        status: "busy" // Make driver busy in Control Room
       });
-      setActiveRide(incomingRequest);
-      setIncomingRequest(null); 
+      
     } catch (error) {
-      alert("Ride already taken.");
+      console.error("Error accepting ride:", error);
+    }
+  };
+
+  // --- 4. COMPLETE MISSION ---
+  const completeRide = async () => {
+    try {
+      const driverRef = doc(db, "drivers", user.uid);
+      
+      // Clear the mission and go back to online
+      await updateDoc(driverRef, {
+        currentMission: null,
+        status: "online"
+      });
+      setActiveRide(null);
+    } catch (error) {
+      console.error("Error completing ride:", error);
     }
   };
 
   const handleLogout = async () => {
+    // Optional: Go offline on logout
+    if (user && isOnline) {
+       try { await updateDoc(doc(db, "drivers", user.uid), { status: 'offline' }); } catch(e){}
+    }
     await logout();
     navigate('/login');
   };
 
-  // --- THE NEW MATCHING UI ---
+  // --- UI REMAINS EXACTLY THE SAME ---
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-300 p-6 relative flex flex-col items-center">
       
-      {/* --- BRANDED HEADER (Matching SignIn.jsx) --- */}
       <header className="w-full max-w-md flex justify-between items-center mb-6 border-b border-neutral-800 pb-4">
         <div className="flex items-center gap-3">
           <div className="bg-neutral-800 p-2 rounded-xl border border-neutral-700 shadow-lg shadow-red-900/10">
@@ -110,7 +161,6 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* --- STATS BAR --- */}
       <div className="w-full max-w-md grid grid-cols-2 gap-4 mb-8">
         <div className="bg-neutral-900/50 p-4 rounded-2xl border border-neutral-800 text-center backdrop-blur-sm">
           <div className="text-[10px] text-neutral-500 uppercase tracking-[0.2em] mb-1">Total Rescues</div>
@@ -126,7 +176,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* --- MAIN BUTTON --- */}
       <main className="flex-1 w-full max-w-md flex flex-col items-center justify-center space-y-8">
         
         {!activeRide && (
@@ -147,7 +196,6 @@ export default function Dashboard() {
           </button>
         )}
 
-        {/* --- ACTIVE RIDE CARD --- */}
         {activeRide && (
           <div className="w-full bg-neutral-900 p-6 rounded-3xl border border-blue-500/50 shadow-[0_0_40px_rgba(59,130,246,0.1)] relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 animate-pulse"></div>
@@ -159,17 +207,19 @@ export default function Dashboard() {
             
             <div className="space-y-4 text-neutral-300">
               <div className="bg-black/30 p-4 rounded-xl border border-neutral-800">
-                <span className="text-[10px] text-neutral-500 uppercase tracking-widest block mb-1">Patient</span> 
-                <span className="text-lg font-bold text-white">{activeRide.patientName}</span>
+                <span className="text-[10px] text-neutral-500 uppercase tracking-widest block mb-1">Patient Location</span> 
+                <span className="text-lg font-bold text-white">{activeRide.location}</span>
               </div>
               <div className="bg-black/30 p-4 rounded-xl border border-neutral-800">
-                <span className="text-[10px] text-neutral-500 uppercase tracking-widest block mb-1">Location</span> 
-                <span className="text-lg font-bold text-white">{activeRide.location}</span>
+                <span className="text-[10px] text-neutral-500 uppercase tracking-widest block mb-1">Time</span> 
+                <span className="text-lg font-bold text-white">
+                  {activeRide.timestamp ? new Date(activeRide.timestamp.seconds * 1000).toLocaleTimeString() : 'Now'}
+                </span>
               </div>
             </div>
 
             <button 
-              onClick={() => setActiveRide(null)}
+              onClick={completeRide}
               className="mt-6 w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-900/20 transition-all active:scale-[0.98] uppercase tracking-widest text-sm"
             >
               Mission Complete
@@ -179,12 +229,10 @@ export default function Dashboard() {
 
       </main>
 
-      {/* --- INCOMING CALL MODAL --- */}
       {incomingRequest && (
         <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-6 animate-in fade-in zoom-in duration-300">
           <div className="bg-neutral-900 border border-red-500/50 w-full max-w-md p-8 rounded-3xl shadow-[0_0_100px_rgba(220,38,38,0.4)] text-center relative overflow-hidden">
             
-            {/* Background Pulse Animation */}
             <div className="absolute top-0 left-0 w-full h-full bg-red-500/5 animate-pulse"></div>
 
             <div className="relative z-10">
@@ -192,11 +240,11 @@ export default function Dashboard() {
                 <Ambulance className="w-8 h-8 text-red-500 animate-bounce" />
               </div>
               
-              <h2 className="text-2xl font-black text-white mb-2 tracking-tight">EMERGENCY ALERT</h2>
-              <p className="text-red-400 text-xs font-bold uppercase tracking-[0.2em] mb-8">Immediate Response Required</p>
+              <h2 className="text-2xl font-black text-white mb-2 tracking-tight">DISPATCH ALERT</h2>
+              <p className="text-red-400 text-xs font-bold uppercase tracking-[0.2em] mb-8">Admin Requesting Unit</p>
               
               <div className="bg-black/40 p-5 rounded-2xl text-left mb-8 border border-neutral-800">
-                <p className="text-xl font-bold text-white mb-1">{incomingRequest.emergencyType}</p>
+                <p className="text-xl font-bold text-white mb-1">Emergency Call</p>
                 <p className="text-neutral-400 text-sm flex items-center gap-2">
                   <span className="w-2 h-2 bg-neutral-600 rounded-full"></span> 
                   {incomingRequest.location}
@@ -205,7 +253,7 @@ export default function Dashboard() {
 
               <div className="flex gap-4">
                 <button 
-                  onClick={() => setIncomingRequest(null)}
+                  onClick={() => setIncomingRequest(null)} // Admin will see driver is still online/idle
                   className="flex-1 py-4 bg-neutral-800 hover:bg-neutral-700 text-neutral-400 rounded-xl font-bold text-xs uppercase tracking-widest transition-colors"
                 >
                   Decline
