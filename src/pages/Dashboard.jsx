@@ -9,7 +9,8 @@ import {
   updateDoc, 
   setDoc,
   onSnapshot,
-  serverTimestamp
+  serverTimestamp,
+  increment // Imported to handle the counting
 } from 'firebase/firestore'; 
 
 export default function Dashboard() {
@@ -22,6 +23,7 @@ export default function Dashboard() {
   const [isOnline, setIsOnline] = useState(false);
   const [incomingRequest, setIncomingRequest] = useState(null); 
   const [activeRide, setActiveRide] = useState(null); 
+  const [rescues, setRescues] = useState(0); // State to hold the live count
 
   // --- 1. LISTEN TO YOUR DRIVER DOCUMENT ---
   useEffect(() => {
@@ -35,6 +37,7 @@ export default function Dashboard() {
         
         // Update local state based on DB
         setIsOnline(data.status === 'online');
+        setRescues(data.totalRescues || 0); // Live update of rescues
 
         if (data.currentMission) {
           if (data.currentMission.status === 'pending') {
@@ -53,7 +56,7 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, [user, db]);
 
-  // --- 2. GO ONLINE (FIXED: Safe Data Handling) ---
+  // --- 2. GO ONLINE ---
   const toggleStatus = async () => {
     if (!user) return;
     
@@ -62,7 +65,6 @@ export default function Dashboard() {
 
     try {
       if (newStatus) {
-        // Prepare safe data (Firestore hates 'undefined')
         const driverData = {
           name: profile?.name || user.email || "Unknown Pilot",
           vehicleNumber: profile?.vehicleNumber || "No-ID",
@@ -71,24 +73,19 @@ export default function Dashboard() {
           lastSeen: serverTimestamp()
         };
 
-        // If createdAt is missing, we add it (Control Room sorts by this)
-        // We use setDoc with merge to ensure the document exists
+        // We use setDoc with merge so we don't overwrite existing stats like totalRescues
         await setDoc(driverRef, {
             ...driverData,
-            createdAt: serverTimestamp() // Safe to overwrite or merge
+            createdAt: serverTimestamp() 
         }, { merge: true });
 
       } else {
-        // Go Offline
         await updateDoc(driverRef, { status: 'offline' });
       }
     } catch (error) {
       console.error("Error updating status:", error);
-      // Fallback: If updateDoc fails (doc doesn't exist), try setDoc
       if (!newStatus) {
-         try {
-            await setDoc(driverRef, { status: 'offline' }, { merge: true });
-         } catch(e) { console.error("Retry failed", e); }
+         try { await setDoc(driverRef, { status: 'offline' }, { merge: true }); } catch(e) {}
       }
     }
   };
@@ -120,13 +117,14 @@ export default function Dashboard() {
     window.location.href = `tel:${number}`;
   };
 
-  // --- 5. COMPLETE MISSION ---
+  // --- 5. COMPLETE MISSION (With Counter Increment) ---
   const completeRide = async () => {
     try {
       const driverRef = doc(db, "drivers", user.uid);
       await updateDoc(driverRef, {
         currentMission: null,
-        status: "online"
+        status: "online",
+        totalRescues: increment(1) // Adds 1 to the database count
       });
       setActiveRide(null);
     } catch (error) {
@@ -169,12 +167,12 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* STATS */}
+      {/* STATS - Now using 'rescues' state */}
       <div className="w-full max-w-md grid grid-cols-2 gap-4 mb-8">
         <div className="bg-neutral-900/50 p-4 rounded-2xl border border-neutral-800 text-center backdrop-blur-sm">
           <div className="text-[10px] text-neutral-500 uppercase tracking-[0.2em] mb-1">Total Rescues</div>
           <div className="text-2xl font-black text-white">
-            {profile?.totalRescues || 0}
+            {rescues} 
           </div>
         </div>
         <div className="bg-neutral-900/50 p-4 rounded-2xl border border-neutral-800 text-center backdrop-blur-sm">
@@ -216,13 +214,11 @@ export default function Dashboard() {
             </h2>
             
             <div className="space-y-4 text-neutral-300">
-              {/* Location Box */}
               <div className="bg-black/30 p-4 rounded-xl border border-neutral-800">
                 <span className="text-[10px] text-neutral-500 uppercase tracking-widest block mb-1">Patient Location</span> 
                 <span className="text-lg font-bold text-white leading-tight">{activeRide.location}</span>
               </div>
 
-              {/* ACTION BUTTONS */}
               <div className="grid grid-cols-2 gap-4 mt-2">
                 <button 
                   onClick={handleNavigate}
